@@ -1,0 +1,60 @@
+use lexer::TokenKind;
+use parser::SyntaxKind;
+
+pub(crate) struct Lexer<'i> {
+    inner: lexer::Lexer<'i>,
+}
+
+impl<'i> Lexer<'i> {
+    pub(crate) fn new(input: &'i str) -> Self {
+        Self {
+            inner: lexer::Lexer::new(input),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Token<'i> {
+    pub kind: SyntaxKind,
+    pub lexeme: &'i str,
+}
+
+impl<'i> Token<'i> {
+    fn new(kind: SyntaxKind, lexeme: &'i str) -> Self {
+        Self { kind, lexeme }
+    }
+}
+
+impl<'i> Iterator for Lexer<'i> {
+    type Item = Token<'i>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let lexer::Token { kind, lexeme, .. } = self.inner.next()?;
+
+        Some(Token::new(into_syntax_kind(kind), lexeme))
+    }
+}
+
+fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
+    match token {
+        TokenKind::Whitespace => SyntaxKind::Whitespace,
+        TokenKind::Comment => SyntaxKind::Comment,
+        TokenKind::Collon => SyntaxKind::Collon,
+        TokenKind::SemiCollon => SyntaxKind::SemiCollon,
+        TokenKind::OpenParentesis => SyntaxKind::OpenParentesis,
+        TokenKind::CloseParentesis => SyntaxKind::CloseParentesis,
+        TokenKind::OpenBraces => SyntaxKind::OpenBraces,
+        TokenKind::CloseBraces => SyntaxKind::CloseBraces,
+        TokenKind::Equals => SyntaxKind::Equals,
+        TokenKind::Plus => SyntaxKind::Plus,
+        TokenKind::Minus => SyntaxKind::Minus,
+        TokenKind::Asterisk => SyntaxKind::Asterisk,
+        TokenKind::Slash => SyntaxKind::Slash,
+        TokenKind::Percent => SyntaxKind::Percent,
+        TokenKind::Arrow => SyntaxKind::Arrow,
+        TokenKind::FnKw => SyntaxKind::FnKw,
+        TokenKind::Identifier => SyntaxKind::Identifier,
+        TokenKind::Integer => SyntaxKind::Integer,
+        TokenKind::Error => SyntaxKind::Error,
+    }
+}

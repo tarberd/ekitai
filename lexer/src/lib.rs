@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use std::ops::Range as StdRange;
 use text_size::{TextRange, TextSize};
 
-#[derive(Debug, PartialEq, Logos)]
+#[derive(Clone, Copy, Debug, PartialEq, Logos)]
 pub enum TokenKind {
     #[regex("[\n\t ]+")]
     Whitespace,
@@ -45,7 +45,7 @@ pub enum TokenKind {
     Error,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Token<'i> {
     pub kind: TokenKind,
     pub lexeme: &'i str,
@@ -210,7 +210,6 @@ mod tests {
         check("1234__0987__Abacate_45", TokenKind::Integer);
     }
 
-
     #[test]
     fn lex_big_integer() {
         check("12__3412344431__424123442123444341", TokenKind::Integer);
@@ -218,6 +217,9 @@ mod tests {
 
     #[test]
     fn lex_long_integer_with_sufix() {
-        check("1234123__4132409__780987099876589756__45_B4l3_14_", TokenKind::Integer);
+        check(
+            "1234123__4132409__780987099876589756__45_B4l3_14_",
+            TokenKind::Integer,
+        );
     }
 }
