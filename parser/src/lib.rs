@@ -6,10 +6,13 @@ pub use crate::syntax_kind::SyntaxKind;
 pub use crate::parser::{event, Parser};
 
 pub trait TokenSource {
-    fn current(&self) -> SyntaxKind;
+    fn current(&self) -> Option<SyntaxKind>;
 
     /// Lookahead n token
     fn lookahead(&self, n: usize) -> Option<SyntaxKind>;
+
+    /// advance cursor to next token
+    fn bump(&mut self);
 }
 
 pub trait TreeSink {

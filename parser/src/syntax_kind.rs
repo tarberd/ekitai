@@ -21,6 +21,15 @@ pub enum SyntaxKind {
     FnKw,
     Identifier,
     Integer,
+
+    FunctionDefinition,
+
     Error,
     Placeholder,
+}
+
+impl SyntaxKind {
+    pub fn is_trivia(&self) -> bool {
+        matches!(self, Self::Whitespace | Self::Comment)
+    }
 }

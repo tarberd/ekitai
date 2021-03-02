@@ -24,6 +24,23 @@ impl<Source: TokenSource> Parser<Source> {
         self.events
     }
 
+    pub(crate) fn current(&self) -> Option<SyntaxKind> {
+        self.token_source.current()
+    }
+
+    pub(crate) fn bump(&mut self) {
+        self.token_source.bump();
+        self.events.push(Event::AddToken);
+    }
+
+    pub(crate) fn expect(&mut self, kind: SyntaxKind) {
+        if self.at(kind) {
+            self.bump();
+        } else {
+            panic!("unexpected token {:?}, found {:?}.", kind, self.current());
+        }
+    }
+
     pub(crate) fn at(&self, kind: SyntaxKind) -> bool {
         self.nth_at(0, kind)
     }
