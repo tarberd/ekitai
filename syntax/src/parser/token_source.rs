@@ -2,13 +2,15 @@ use super::super::lexer::Token;
 use parser::{SyntaxKind, TokenSource};
 use std::slice::Iter;
 
-pub(crate) struct TextTokenSource<'t, 'i> {
-    tokens: Iter<'t, Token<'i>>,
+pub(crate) struct TextTokenSource<'i> {
+    tokens: Iter<'i, Token<'i>>,
 }
 
-impl<'t, 'i> TextTokenSource<'t, 'i> {
-    pub fn new(tokens: &'t [Token<'i>]) -> Self {
-        Self { tokens: tokens.iter() }
+impl<'i> TextTokenSource<'i> {
+    pub fn new(tokens: &'i [Token<'i>]) -> Self {
+        Self {
+            tokens: tokens.iter(),
+        }
     }
 
     fn eat_trivia(&mut self) {
@@ -18,7 +20,7 @@ impl<'t, 'i> TextTokenSource<'t, 'i> {
     }
 
     fn at_trivia(&self) -> bool {
-        self.current().map_or(false, |kind| kind.is_trivia())
+        self.tokens.clone().next().cloned().map_or(false, |token| token.kind.is_trivia())
     }
 
     fn do_bump(&mut self) {
@@ -26,17 +28,15 @@ impl<'t, 'i> TextTokenSource<'t, 'i> {
     }
 }
 
-impl<'t, 'i> TokenSource for TextTokenSource<'t, 'i> {
-    fn current(&self) -> Option<SyntaxKind> {
-        Some(self.tokens.clone().next()?.kind)
-    }
+impl<'i> Iterator for TextTokenSource<'i> {
+    type Item = SyntaxKind;
 
-    fn lookahead(&self, n: usize) -> Option<SyntaxKind> {
-        Some(self.tokens.clone().nth(n)?.kind)
-    }
-
-    fn bump(&mut self) {
-        self.do_bump();
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.tokens.next();
         self.eat_trivia();
+        item.map(|item| item.kind)
     }
+}
+
+impl<'i> TokenSource for TextTokenSource<'i> {
 }

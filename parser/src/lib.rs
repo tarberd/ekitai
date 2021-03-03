@@ -2,18 +2,22 @@ mod grammar;
 mod parser;
 mod syntax_kind;
 
+use grammar::parse_root;
+
 use crate::parser::event;
-pub use crate::parser::{error::ParseError, Parser};
+pub use crate::parser::error::ParseError;
 pub use crate::syntax_kind::SyntaxKind;
+use std::iter::Iterator;
 
-pub trait TokenSource {
-    fn current(&self) -> Option<SyntaxKind>;
+pub trait TokenSource: Iterator<Item = SyntaxKind> {
+    
+    // fn current(&self) -> Option<SyntaxKind>;
 
-    /// Lookahead n token
-    fn lookahead(&self, n: usize) -> Option<SyntaxKind>;
+    // /// Lookahead n token
+    // fn lookahead(&self, n: usize) -> Option<SyntaxKind>;
 
-    /// advance cursor to next token
-    fn bump(&mut self);
+    // /// advance cursor to next token
+    // fn bump(&mut self);
 }
 
 pub trait TreeSink {
@@ -35,17 +39,14 @@ where
     Source: TokenSource,
     Sink: TreeSink,
 {
-    parse_grammar(token_source, tree_sink, grammar::parse_root)
+    parse_grammar(token_source, tree_sink /*, grammar::parse_root*/)
 }
 
-fn parse_grammar<Source, Sink, F>(token_source: Source, tree_sink: Sink, f: F) -> Sink
+fn parse_grammar<Source, Sink>(token_source: Source, tree_sink: Sink) -> Sink
 where
     Source: TokenSource,
     Sink: TreeSink,
-    F: FnOnce(&mut Parser<Source>),
 {
-    let mut parser = Parser::new(token_source);
-    f(&mut parser);
-    let events = parser.finish();
+    let events = parse_root(token_source);
     event::sink_events(events, tree_sink)
 }
