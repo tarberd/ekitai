@@ -24,6 +24,8 @@ pub enum SyntaxKind {
     Integer,
 
     FunctionDefinition,
+    Name,
+    BlockExpression,
 
     Error,
     Placeholder,

@@ -1,15 +1,17 @@
+pub mod error;
 pub mod event;
 mod marker;
-pub mod error;
 
-use crate::syntax_kind::SyntaxKind;
 use super::TokenSource;
+use crate::syntax_kind::SyntaxKind;
+use error::ParseError;
 use event::Event;
 use marker::Marker;
-use error::ParseError;
 
-pub struct Parser<Source: TokenSource> 
-where Source: TokenSource {
+pub struct Parser<Source: TokenSource>
+where
+    Source: TokenSource,
+{
     token_source: Source,
     events: Vec<Event>,
 }
@@ -64,5 +66,20 @@ impl<Source: TokenSource> Parser<Source> {
 
     pub(crate) fn error(&mut self, error: ParseError) {
         self.events.push(Event::Error(error));
+    }
+
+    pub(crate) fn error_and_recover(&mut self, error: ParseError, recovery_set: &[SyntaxKind]) {
+        if self
+            .current()
+            .map_or(false, |kind| recovery_set.contains(&kind))
+        {
+            self.error(error);
+            return;
+        }
+
+        let m = self.start();
+        self.error(error);
+        self.bump();
+        m.complete(self, SyntaxKind::Error);
     }
 }

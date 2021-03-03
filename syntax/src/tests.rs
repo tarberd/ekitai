@@ -21,7 +21,8 @@ fn parse_function_definition() {
               FunctionDefinition@0..14
                 FnKw@0..2 "fn"
                 Whitespace@2..3 " "
-                Identifier@3..5 "id"
+                Name@3..5
+                  Identifier@3..5 "id"
                 OpenParenthesis@5..6 "("
                 CloseParenthesis@6..7 ")"
                 Whitespace@7..8 " "
@@ -39,7 +40,8 @@ fn parse_function_definition_missing_id() {
           FunctionDefinition@0..11
             FnKw@0..2 "fn"
             Whitespace@2..3 " "
-            Identifier@3..6 "foo"
+            Name@3..6
+              Identifier@3..6 "foo"
             OpenParenthesis@6..7 "("
             CloseParenthesis@7..8 ")"
             Whitespace@8..9 " "
@@ -50,4 +52,30 @@ fn parse_function_definition_missing_id() {
         TextRange::new(9.into(), 11.into()),
     )];
     assert_eq!(errors, parse.errors);
+}
+
+#[test]
+fn parse_function_half() {
+    check(
+        "fn foo fn id() -> i32",
+        expect![[r#"
+            EkitaiSource@0..21
+              FunctionDefinition@0..7
+                FnKw@0..2 "fn"
+                Whitespace@2..3 " "
+                Name@3..7
+                  Identifier@3..6 "foo"
+                  Whitespace@6..7 " "
+              FunctionDefinition@7..21
+                FnKw@7..9 "fn"
+                Whitespace@9..10 " "
+                Name@10..12
+                  Identifier@10..12 "id"
+                OpenParenthesis@12..13 "("
+                CloseParenthesis@13..14 ")"
+                Whitespace@14..15 " "
+                Arrow@15..17 "->"
+                Whitespace@17..18 " "
+                Identifier@18..21 "i32""#]],
+    );
 }

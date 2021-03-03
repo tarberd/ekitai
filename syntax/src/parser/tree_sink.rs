@@ -55,8 +55,8 @@ impl<'t, 'i> TextTreeSink<'t, 'i> {
 
 impl<'t, 'i> TreeSink for TextTreeSink<'t, 'i> {
     fn add_token(&mut self) {
-        self.eat_trivia();
         self.do_add_token();
+        self.eat_trivia();
     }
 
     fn start_node(&mut self, kind: SyntaxKind) {
@@ -64,7 +64,8 @@ impl<'t, 'i> TreeSink for TextTreeSink<'t, 'i> {
     }
 
     fn finish_node(&mut self) {
-        self.builder.finish_node()
+        self.builder.finish_node();
+        self.eat_trivia();
     }
 
     fn add_error(&mut self, error: ParseError) {
