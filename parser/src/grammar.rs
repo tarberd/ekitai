@@ -16,8 +16,8 @@ fn parse_function<S: TokenSource>(p: &mut Parser<S>) {
     p.bump();
 
     p.expect(Identifier);
-    p.expect(OpenParentesis);
-    p.expect(CloseParentesis);
+    p.expect(OpenParenthesis);
+    p.expect(CloseParenthesis);
     p.expect(Arrow);
     p.expect(Identifier);
 

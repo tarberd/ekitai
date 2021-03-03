@@ -2,8 +2,9 @@ mod grammar;
 mod parser;
 mod syntax_kind;
 
+use crate::parser::event;
+pub use crate::parser::{error::ParseError, Parser};
 pub use crate::syntax_kind::SyntaxKind;
-pub use crate::parser::{event, Parser};
 
 pub trait TokenSource {
     fn current(&self) -> Option<SyntaxKind>;
@@ -25,6 +26,8 @@ pub trait TreeSink {
     /// Finish current branch and restore previous
     /// branch as current.
     fn finish_node(&mut self);
+
+    fn add_error(&mut self, error: ParseError);
 }
 
 pub fn parse<Source, Sink>(token_source: Source, tree_sink: Sink) -> Sink

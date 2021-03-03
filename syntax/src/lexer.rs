@@ -1,5 +1,6 @@
 use lexer::TokenKind;
 use parser::SyntaxKind;
+use text_size::TextRange;
 
 pub(crate) struct Lexer<'i> {
     inner: lexer::Lexer<'i>,
@@ -17,11 +18,16 @@ impl<'i> Lexer<'i> {
 pub(crate) struct Token<'i> {
     pub kind: SyntaxKind,
     pub lexeme: &'i str,
+    pub range: TextRange,
 }
 
 impl<'i> Token<'i> {
-    fn new(kind: SyntaxKind, lexeme: &'i str) -> Self {
-        Self { kind, lexeme }
+    fn new(kind: SyntaxKind, lexeme: &'i str, range: TextRange) -> Self {
+        Self {
+            kind,
+            lexeme,
+            range,
+        }
     }
 }
 
@@ -29,9 +35,9 @@ impl<'i> Iterator for Lexer<'i> {
     type Item = Token<'i>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let lexer::Token { kind, lexeme, .. } = self.inner.next()?;
+        let lexer::Token { kind, lexeme, range } = self.inner.next()?;
 
-        Some(Token::new(into_syntax_kind(kind), lexeme))
+        Some(Token::new(into_syntax_kind(kind), lexeme, range))
     }
 }
 
@@ -41,8 +47,8 @@ fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
         TokenKind::Comment => SyntaxKind::Comment,
         TokenKind::Collon => SyntaxKind::Collon,
         TokenKind::SemiCollon => SyntaxKind::SemiCollon,
-        TokenKind::OpenParentesis => SyntaxKind::OpenParentesis,
-        TokenKind::CloseParentesis => SyntaxKind::CloseParentesis,
+        TokenKind::OpenParenthesis => SyntaxKind::OpenParenthesis,
+        TokenKind::CloseParenthesis => SyntaxKind::CloseParenthesis,
         TokenKind::OpenBraces => SyntaxKind::OpenBraces,
         TokenKind::CloseBraces => SyntaxKind::CloseBraces,
         TokenKind::Equals => SyntaxKind::Equals,

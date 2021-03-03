@@ -198,6 +198,7 @@ dependencies = [
  "num-traits",
  "parser",
  "rowan",
+ "text-size",
 ]
 
 [[package]]

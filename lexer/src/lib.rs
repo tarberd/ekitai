@@ -14,9 +14,9 @@ pub enum TokenKind {
     #[token(";")]
     SemiCollon,
     #[token("(")]
-    OpenParentesis,
+    OpenParenthesis,
     #[token(")")]
-    CloseParentesis,
+    CloseParenthesis,
     #[token("{")]
     OpenBraces,
     #[token("}")]
@@ -132,13 +132,13 @@ mod tests {
     }
 
     #[test]
-    fn lex_open_parentesis() {
-        check("(", TokenKind::OpenParentesis);
+    fn lex_open_parenthesis() {
+        check("(", TokenKind::OpenParenthesis);
     }
 
     #[test]
-    fn lex_close_parentesis() {
-        check(")", TokenKind::CloseParentesis);
+    fn lex_close_parenthesis() {
+        check(")", TokenKind::CloseParenthesis);
     }
 
     #[test]

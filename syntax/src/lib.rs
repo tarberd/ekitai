@@ -7,15 +7,28 @@ mod tests;
 
 use cst::SyntaxNode;
 use rowan::GreenNode;
+use ::parser::ParseError;
+use text_size::TextRange;
 
+#[derive(Debug, PartialEq)]
+pub struct SyntaxError {
+    pub error: ParseError,
+    pub range: TextRange,
+}
+
+impl SyntaxError {
+    pub fn new(error: ParseError, range: TextRange) -> Self {
+        Self { error, range }
+    }
+}
 #[derive(Debug)]
 pub struct Parse {
     green_node: GreenNode,
-    errors: (),
+    errors: Vec<SyntaxError>,
 }
 
 impl Parse {
-    fn new(green_node: GreenNode, errors: ()) -> Self {
+    fn new(green_node: GreenNode, errors: Vec<SyntaxError>) -> Self {
         Self { green_node, errors }
     }
 

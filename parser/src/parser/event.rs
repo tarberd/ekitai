@@ -1,15 +1,17 @@
 use crate::syntax_kind::SyntaxKind;
 use crate::TreeSink;
 use std::mem;
+use super::ParseError;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Event {
+pub(crate) enum Event {
     StartNode {
         kind: SyntaxKind,
         forward_parent: Option<usize>,
     },
     FinishNode,
     AddToken,
+    Error(ParseError),
     Placeholder,
 }
 
@@ -48,6 +50,7 @@ where
             }
             Event::FinishNode => sink.finish_node(),
             Event::AddToken => sink.add_token(),
+            Event::Error(err) => sink.add_error(err),
             Event::Placeholder => {}
         }
     }

@@ -1,10 +1,12 @@
 pub mod event;
 mod marker;
+pub mod error;
 
 use crate::syntax_kind::SyntaxKind;
 use super::TokenSource;
 use event::Event;
 use marker::Marker;
+use error::ParseError;
 
 pub struct Parser<Source: TokenSource> 
 where Source: TokenSource {
@@ -28,19 +30,6 @@ impl<Source: TokenSource> Parser<Source> {
         self.token_source.current()
     }
 
-    pub(crate) fn bump(&mut self) {
-        self.token_source.bump();
-        self.events.push(Event::AddToken);
-    }
-
-    pub(crate) fn expect(&mut self, kind: SyntaxKind) {
-        if self.at(kind) {
-            self.bump();
-        } else {
-            panic!("unexpected token {:?}, found {:?}.", kind, self.current());
-        }
-    }
-
     pub(crate) fn at(&self, kind: SyntaxKind) -> bool {
         self.nth_at(0, kind)
     }
@@ -56,5 +45,24 @@ impl<Source: TokenSource> Parser<Source> {
         self.events.push(Event::Placeholder);
 
         Marker::new(pos)
+    }
+
+    pub(crate) fn bump(&mut self) {
+        self.token_source.bump();
+        self.events.push(Event::AddToken);
+    }
+
+    pub(crate) fn expect(&mut self, kind: SyntaxKind) -> bool {
+        if self.at(kind) {
+            self.bump();
+            true
+        } else {
+            self.error(ParseError::new(vec![kind], self.current()));
+            false
+        }
+    }
+
+    pub(crate) fn error(&mut self, error: ParseError) {
+        self.events.push(Event::Error(error));
     }
 }
