@@ -7,9 +7,9 @@ use grammar::parse_root;
 use crate::parser::event;
 pub use crate::parser::error::ParseError;
 pub use crate::syntax_kind::SyntaxKind;
-use std::iter::Iterator;
+use std::{fmt::Debug, iter::Iterator};
 
-pub trait TokenSource: Iterator<Item = SyntaxKind> + Clone {
+pub trait TokenSource: Iterator<Item = SyntaxKind> + Clone + Debug {
     
     // fn current(&self) -> Option<SyntaxKind>;
 
