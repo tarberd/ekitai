@@ -2,6 +2,7 @@ use super::super::lexer::Token;
 use parser::{SyntaxKind, TokenSource};
 use std::slice::Iter;
 
+#[derive(Debug, Clone)]
 pub(crate) struct TextTokenSource<'i> {
     tokens: Iter<'i, Token<'i>>,
 }

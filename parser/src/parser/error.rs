@@ -1,6 +1,6 @@
 use crate::syntax_kind::SyntaxKind;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ParseError {
     pub expected: Vec<SyntaxKind>,
     pub found: Option<SyntaxKind>,

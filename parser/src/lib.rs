@@ -9,7 +9,7 @@ pub use crate::parser::error::ParseError;
 pub use crate::syntax_kind::SyntaxKind;
 use std::iter::Iterator;
 
-pub trait TokenSource: Iterator<Item = SyntaxKind> {
+pub trait TokenSource: Iterator<Item = SyntaxKind> + Clone {
     
     // fn current(&self) -> Option<SyntaxKind>;
 

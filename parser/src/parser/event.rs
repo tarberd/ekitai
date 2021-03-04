@@ -3,7 +3,7 @@ use crate::TreeSink;
 use std::mem;
 use super::ParseError;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub(crate) enum Event {
     StartNode {
         kind: SyntaxKind,
