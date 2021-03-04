@@ -25,7 +25,12 @@ pub enum SyntaxKind {
 
     FunctionDefinition,
     Name,
+    NameReference,
     BlockExpression,
+    Literal,
+    PrefixExpression,
+    InfixExpression,
+    ParenthesisExpression,
 
     Error,
     Placeholder,

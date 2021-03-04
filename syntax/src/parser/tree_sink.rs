@@ -45,7 +45,7 @@ impl<'t, 'i> TextTreeSink<'t, 'i> {
     }
 
     fn do_add_token(&mut self) {
-        let current = self.tokens.next().unwrap();
+        let current = dbg!(self.tokens.next()).unwrap();
         let Token { kind, lexeme, .. } = current;
         let _ = std::mem::replace(&mut self.previous_token, Some(current));
         self.builder
@@ -55,28 +55,30 @@ impl<'t, 'i> TextTreeSink<'t, 'i> {
 
 impl<'t, 'i> TreeSink for TextTreeSink<'t, 'i> {
     fn add_token(&mut self) {
-        self.do_add_token();
         self.eat_trivia();
+        self.do_add_token();
     }
 
     fn start_node(&mut self, kind: SyntaxKind) {
-        self.builder.start_node(EkitaiLanguage::kind_to_raw(kind))
+        self.eat_trivia();
+        self.builder.start_node(EkitaiLanguage::kind_to_raw(kind));
+        self.eat_trivia();
     }
 
     fn finish_node(&mut self) {
         self.builder.finish_node();
-        self.eat_trivia();
     }
 
     fn add_error(&mut self, error: ParseError) {
         let range = if let Some(Token { range, .. }) = self.current() {
             range
         } else {
-            match dbg!(self.previous_token) {
+            match self.previous_token {
                 Some(tok) => tok.range,
                 None => unreachable!(),
             }
         };
         self.errors.push(SyntaxError::new(error, range));
+        self.eat_trivia();
     }
 }

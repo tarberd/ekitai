@@ -1,6 +1,6 @@
 pub mod error;
 pub mod event;
-mod marker;
+pub(crate) mod marker;
 
 use super::TokenSource;
 use crate::syntax_kind::SyntaxKind;
