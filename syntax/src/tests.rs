@@ -15,10 +15,10 @@ fn parse_empty() {
 #[test]
 fn parse_function_definition() {
     check(
-        "fn id() -> i32",
+        "fn id() -> i32 {}",
         expect![[r#"
-            EkitaiSource@0..14
-              FunctionDefinition@0..14
+            EkitaiSource@0..17
+              FunctionDefinition@0..17
                 FnKw@0..2 "fn"
                 Whitespace@2..3 " "
                 Identifier@3..5 "id"
@@ -27,7 +27,10 @@ fn parse_function_definition() {
                 Whitespace@7..8 " "
                 Arrow@8..10 "->"
                 Whitespace@10..11 " "
-                Identifier@11..14 "i32""#]],
+                Identifier@11..14 "i32"
+                Whitespace@14..15 " "
+                OpenBraces@15..16 "{"
+                CloseBraces@16..17 "}""#]],
     );
 }
 
@@ -45,9 +48,9 @@ fn parse_function_definition_missing_id() {
             Whitespace@8..9 " "
             Arrow@9..11 "->""#]];
     expected_tree.assert_eq(&parse.debug_dump());
-    let errors = vec![SyntaxError::new(
+    let error = SyntaxError::new(
         ParseError::new(vec![SyntaxKind::Identifier], None),
         TextRange::new(9.into(), 11.into()),
-    )];
-    assert_eq!(errors, parse.errors);
+    );
+    assert_eq!(error, parse.errors[0]);
 }
