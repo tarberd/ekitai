@@ -1,19 +1,30 @@
-use crate::SyntaxError;
-
-use super::super::cst::EkitaiLanguage;
-use super::super::lexer::Token;
+use crate::lexer::Token;
+use crate::syntax_tree::EkitaiLanguage;
 use parser::{ParseError, SyntaxKind, TreeSink};
 use rowan::{GreenNode, GreenNodeBuilder, Language};
 use std::slice::Iter;
+use text_size::TextRange;
 
-pub(crate) struct TextTreeSink<'t, 'i> {
+#[derive(Debug, PartialEq)]
+pub struct SyntaxError {
+    pub error: ParseError,
+    pub range: TextRange,
+}
+
+impl SyntaxError {
+    pub fn new(error: ParseError, range: TextRange) -> Self {
+        Self { error, range }
+    }
+}
+
+pub(crate) struct SyntaxTreeSink<'t, 'i> {
     tokens: Iter<'t, Token<'i>>,
     previous_token: Option<&'t Token<'i>>,
     builder: GreenNodeBuilder<'static>,
     errors: Vec<SyntaxError>,
 }
 
-impl<'t, 'i> TextTreeSink<'t, 'i> {
+impl<'t, 'i> SyntaxTreeSink<'t, 'i> {
     pub(crate) fn new(tokens: &'t [Token<'i>]) -> Self {
         Self {
             tokens: tokens.iter(),
@@ -53,7 +64,7 @@ impl<'t, 'i> TextTreeSink<'t, 'i> {
     }
 }
 
-impl<'t, 'i> TreeSink for TextTreeSink<'t, 'i> {
+impl<'t, 'i> TreeSink for SyntaxTreeSink<'t, 'i> {
     fn add_token(&mut self) {
         self.eat_trivia();
         self.do_add_token();

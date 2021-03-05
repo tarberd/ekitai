@@ -1,17 +1,16 @@
-pub(crate) mod token_source;
-pub(crate) mod tree_sink;
+pub(crate) mod syntax_token_source;
+pub(crate) mod syntax_tree_sink;
 
-use super::lexer::Lexer;
-use super::Parse;
-use parser::parse;
-use token_source::TextTokenSource;
-use tree_sink::TextTreeSink;
+pub use syntax_tree_sink::SyntaxError;
+use crate::lexer::Lexer;
+use rowan::GreenNode;
+use syntax_token_source::SyntaxTokenSource;
+use syntax_tree_sink::SyntaxTreeSink;
 
-pub fn parse_text(input: &str) -> Parse {
+pub fn parse_text(input: &str) -> (GreenNode, Vec<SyntaxError>) {
     let tokens: Vec<_> = Lexer::new(input).collect();
-    let token_source = TextTokenSource::new(&tokens);
-    let tree_sink = TextTreeSink::new(&tokens);
-    let sink = parse(token_source, tree_sink);
-    let (tree, errors) = sink.finish();
-    Parse::new(tree, errors)
+    let token_source = SyntaxTokenSource::new(&tokens);
+    let tree_sink = SyntaxTreeSink::new(&tokens);
+    let tree_sink = parser::parse(token_source, tree_sink);
+    tree_sink.finish()
 }

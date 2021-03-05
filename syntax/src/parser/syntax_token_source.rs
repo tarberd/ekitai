@@ -2,11 +2,11 @@ use super::super::lexer::Token;
 use parser::{SyntaxKind, TokenSource};
 use std::slice::Iter;
 
-pub(crate) struct TextTokenSource<'t, 'i> {
+pub(crate) struct SyntaxTokenSource<'t, 'i> {
     tokens: Iter<'t, Token<'i>>,
 }
 
-impl<'t, 'i> TextTokenSource<'t, 'i> {
+impl<'t, 'i> SyntaxTokenSource<'t, 'i> {
     pub fn new(tokens: &'t [Token<'i>]) -> Self {
         Self { tokens: tokens.iter() }
     }
@@ -26,7 +26,7 @@ impl<'t, 'i> TextTokenSource<'t, 'i> {
     }
 }
 
-impl<'t, 'i> TokenSource for TextTokenSource<'t, 'i> {
+impl<'t, 'i> TokenSource for SyntaxTokenSource<'t, 'i> {
     fn current(&self) -> Option<SyntaxKind> {
         Some(self.tokens.clone().next()?.kind)
     }

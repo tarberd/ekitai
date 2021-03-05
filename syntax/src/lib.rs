@@ -1,35 +1,31 @@
-pub(crate) mod cst;
 pub(crate) mod lexer;
 pub mod parser;
+pub(crate) mod syntax_tree;
+pub mod ast;
 
 #[cfg(test)]
 mod tests;
 
-use cst::SyntaxNode;
+use crate::parser::SyntaxError;
 use rowan::GreenNode;
-use ::parser::ParseError;
-use text_size::TextRange;
+use std::marker::PhantomData;
+use syntax_tree::SyntaxNode;
+use ast::SourceFile;
 
-#[derive(Debug, PartialEq)]
-pub struct SyntaxError {
-    pub error: ParseError,
-    pub range: TextRange,
-}
-
-impl SyntaxError {
-    pub fn new(error: ParseError, range: TextRange) -> Self {
-        Self { error, range }
-    }
-}
 #[derive(Debug)]
-pub struct Parse {
+pub struct Parse<T> {
     green_node: GreenNode,
     errors: Vec<SyntaxError>,
+    _ty: PhantomData<T>,
 }
 
-impl Parse {
+impl<T> Parse<T> {
     fn new(green_node: GreenNode, errors: Vec<SyntaxError>) -> Self {
-        Self { green_node, errors }
+        Self {
+            green_node,
+            errors,
+            _ty: PhantomData,
+        }
     }
 
     fn syntax(&self) -> SyntaxNode {
@@ -39,5 +35,12 @@ impl Parse {
     pub fn debug_dump(&self) -> String {
         let tree = format!("{:#?}", self.syntax());
         tree[..tree.len() - 1].to_string()
+    }
+}
+
+impl SourceFile {
+    pub fn parse(input: &str) -> Parse<SourceFile> {
+        let (node, errors) = parser::parse_text(input);
+        Parse::new(node, errors)
     }
 }

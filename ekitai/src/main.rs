@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use syntax::parser;
+use syntax::ast::SourceFile;
 
 fn main() {
     let args: Vec<_> = std::env::args()
@@ -18,7 +18,6 @@ fn main() {
 }
 
 fn drive(source: String) {
-    let parse = parser::parse_text(&source);
-
+    let parse = SourceFile::parse(&source);
     println!("{}", parse.debug_dump());
 }

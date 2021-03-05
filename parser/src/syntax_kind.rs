@@ -2,7 +2,7 @@ use num_derive::{FromPrimitive, ToPrimitive};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum SyntaxKind {
-    EkitaiSource,
+    SourceFile,
 
     Whitespace,
     Comment,

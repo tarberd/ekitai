@@ -13,7 +13,7 @@ pub(crate) fn parse_root<S: TokenSource>(p: &mut Parser<S>) {
             parse_function(p)
         }
     }
-    m.complete(p, EkitaiSource);
+    m.complete(p, SourceFile);
 }
 
 fn parse_function<S: TokenSource>(p: &mut Parser<S>) {
