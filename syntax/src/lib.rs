@@ -1,16 +1,15 @@
 pub mod cst;
 pub(crate) mod lexer;
 pub mod parser;
-pub(crate) mod syntax_tree;
 
 #[cfg(test)]
 mod tests;
 
 use crate::parser::SyntaxError;
-use cst::SourceFile;
+use cst::source_file::SourceFile;
 use rowan::GreenNode;
 use std::convert::TryFrom;
-use syntax_tree::SyntaxNode;
+use cst::raw::SyntaxNode;
 
 #[derive(Debug)]
 pub struct Parse {
