@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 parser = { path = "../parser" }
 lexer = { path = "../lexer" }
-text-size = "1.1" 
+text-size = "1.1"
 num-traits = "0.2"
-rowan = "0.12" 
+rowan = "0.12"
 expect-test = "1.1"
