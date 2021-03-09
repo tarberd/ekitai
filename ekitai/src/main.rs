@@ -24,6 +24,8 @@ fn drive(source: String) {
     println!("{}", &source_file,);
     let functions = source_file.functions();
     for fun in functions {
-        println!("{}", &fun);
+        if let Some(body) = fun.body() {
+            println!("body: {}", body);
+        }
     }
 }

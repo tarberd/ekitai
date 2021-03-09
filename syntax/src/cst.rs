@@ -1,6 +1,7 @@
 pub mod function;
 pub mod raw;
 pub mod source_file;
+pub mod expression;
 
 use parser::SyntaxKind;
 
