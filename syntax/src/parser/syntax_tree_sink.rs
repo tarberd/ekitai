@@ -56,7 +56,7 @@ impl<'t, 'i> SyntaxTreeSink<'t, 'i> {
     }
 
     fn do_add_token(&mut self) {
-        let current = dbg!(self.tokens.next()).unwrap();
+        let current = self.tokens.next().unwrap();
         let Token { kind, lexeme, .. } = current;
         let _ = std::mem::replace(&mut self.previous_token, Some(current));
         self.builder

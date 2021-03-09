@@ -4,5 +4,6 @@ members = [
     "lexer",
     "parser",
     "syntax",
+    "syntax-macros",
     "ekitai",
 ]
