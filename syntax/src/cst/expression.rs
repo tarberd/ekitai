@@ -1,37 +1,30 @@
-use super::expression::BlockExpression;
 use super::raw::SyntaxNode;
 use super::SyntaxToAstError;
 use parser::SyntaxKind;
 use std::convert::TryFrom;
 use std::fmt::Display;
 
-pub struct Function {
+pub struct BlockExpression {
     raw: SyntaxNode,
 }
 
-impl Function {
+impl BlockExpression {
     fn from_raw(raw: SyntaxNode) -> Self {
         Self { raw }
     }
 
     fn syntax_kind() -> SyntaxKind {
-        SyntaxKind::FunctionDefinition
-    }
-
-    pub fn body(&self) -> Option<BlockExpression> {
-        self.raw
-            .children()
-            .find_map(|r| BlockExpression::try_from(r).ok())
+        SyntaxKind::BlockExpression
     }
 }
 
-impl Display for Function {
+impl Display for BlockExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.raw)
     }
 }
 
-impl TryFrom<SyntaxNode> for Function {
+impl TryFrom<SyntaxNode> for BlockExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
