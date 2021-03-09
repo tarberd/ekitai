@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use syntax::cst::SourceFile;
+use syntax::cst::source_file::SourceFile;
 
 fn main() {
     let args: Vec<_> = std::env::args()
@@ -20,8 +20,10 @@ fn main() {
 fn drive(source: String) {
     let parse = SourceFile::parse(&source);
     println!("{}", parse.debug_dump());
-    println!(
-        "{}",
-        parse.ast_node()
-    );
+    let source_file = parse.ast_node();
+    println!("{}", &source_file,);
+    let functions = source_file.functions();
+    for fun in functions {
+        println!("{}", &fun);
+    }
 }

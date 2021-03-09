@@ -1,5 +1,5 @@
+use crate::cst::raw::EkitaiLanguage;
 use crate::lexer::Token;
-use crate::syntax_tree::EkitaiLanguage;
 use parser::{ParseError, SyntaxKind, TreeSink};
 use rowan::{GreenNode, GreenNodeBuilder, Language};
 use std::slice::Iter;
