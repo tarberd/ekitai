@@ -5,6 +5,7 @@ use parser::SyntaxKind;
 use std::convert::TryFrom;
 use std::fmt::Display;
 
+#[derive(Debug)]
 pub enum Expression {
     BlockExpression(BlockExpression),
     Literal(Literal),
@@ -56,6 +57,7 @@ impl TryFrom<SyntaxNode> for Expression {
     }
 }
 
+#[derive(Debug)]
 pub struct Literal(SyntaxNode);
 
 impl Literal {
@@ -87,11 +89,25 @@ impl TryFrom<SyntaxNode> for Literal {
     }
 }
 
+#[derive(Debug)]
 pub struct InfixExpression(SyntaxNode);
 
 impl InfixExpression {
     fn syntax_kind() -> SyntaxKind {
         SyntaxKind::InfixExpression
+    }
+
+    pub fn lhs(&self) -> Option<Expression> {
+        self.as_syntax_node()
+            .children()
+            .find_map(|n| Expression::try_from(n).ok())
+    }
+
+    pub fn rhs(&self) -> Option<Expression> {
+        self.as_syntax_node()
+            .children()
+            .filter_map(|n| Expression::try_from(n).ok())
+            .nth(1)
     }
 }
 
@@ -118,6 +134,7 @@ impl TryFrom<SyntaxNode> for InfixExpression {
     }
 }
 
+#[derive(Debug)]
 pub struct BlockExpression(SyntaxNode);
 
 impl CstNode for BlockExpression {
