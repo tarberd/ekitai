@@ -26,6 +26,7 @@ fn drive(source: String) {
     for fun in functions {
         if let Some(body) = fun.body() {
             println!("body: {}", body);
+            println!("tail: {}", body.tail_expression().unwrap());
         }
     }
 }
