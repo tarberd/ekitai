@@ -6,6 +6,7 @@ use parser::SyntaxKind;
 use std::convert::TryFrom;
 use std::fmt::Display;
 
+#[derive(Debug)]
 pub struct Function(SyntaxNode);
 
 impl CstNode for Function {
@@ -19,10 +20,28 @@ impl Function {
         SyntaxKind::FunctionDefinition
     }
 
+    pub fn name(&self) -> Option<String> {
+        self.as_syntax_node()
+            .children()
+            .find_map(|r| match r.kind() {
+                SyntaxKind::Name => Some(r.text().to_string()),
+                _ => None,
+            })
+    }
+
     pub fn body(&self) -> Option<BlockExpression> {
         self.as_syntax_node()
             .children()
             .find_map(|r| BlockExpression::try_from(r).ok())
+    }
+
+    pub fn return_name_ref(&self) -> Option<String> {
+        self.as_syntax_node()
+            .children()
+            .find_map(|r| match r.kind() {
+                SyntaxKind::NameReference => Some(r.text().to_string()),
+                _ => None,
+            })
     }
 }
 
