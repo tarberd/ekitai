@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use syntax::cst::source_file::SourceFile;
+use syntax::cst::expression::Expression;
 
 fn main() {
     let args: Vec<_> = std::env::args()
@@ -21,12 +22,17 @@ fn drive(source: String) {
     let parse = SourceFile::parse(&source);
     println!("{}", parse.debug_dump());
     let source_file = parse.ast_node();
-    println!("{}", &source_file,);
+    println!("{}", source_file);
     let functions = source_file.functions();
     for fun in functions {
         if let Some(body) = fun.body() {
             println!("body: {}", body);
-            println!("tail: {}", body.tail_expression().unwrap());
+            let tail = body.tail_expression().unwrap();
+            println!("tail: {}", tail);
+            println!("{:?}", match tail {
+                Expression::InfixExpression(x) => (x.lhs(), x.rhs()),
+                _ => panic!("fuck u"),
+            });
         }
     }
 }
