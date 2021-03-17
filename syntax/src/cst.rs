@@ -1,15 +1,26 @@
-pub mod expression;
-pub mod function;
+mod expression;
+mod function;
+mod name;
 pub mod raw;
-pub mod source_file;
+mod source_file;
+mod token;
+
+pub use expression::{BlockExpression, Expression, InfixExpression, Literal};
+pub use function::Function;
+pub use source_file::SourceFile;
+pub use token::{Identifier, Integer, LiteralKind};
 
 use parser::SyntaxKind;
-use raw::SyntaxNode;
+use raw::{SyntaxNode, SyntaxToken};
 use std::convert::TryFrom;
 use std::fmt::Display;
 
 pub trait CstNode: TryFrom<SyntaxNode, Error = SyntaxToAstError> + Display {
     fn as_syntax_node(&self) -> &SyntaxNode;
+}
+
+pub trait CstToken: TryFrom<SyntaxToken, Error = SyntaxToAstError> + Display {
+    fn as_syntax_token(&self) -> &SyntaxToken;
 }
 
 pub struct SyntaxToAstError {

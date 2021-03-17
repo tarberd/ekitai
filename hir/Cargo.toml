@@ -1,5 +1,5 @@
 [package]
-name = "ekitai"
+name = "hir"
 version = "0.1.0"
 authors = ["tarberd <bernardo.mferrari@gmail.com>"]
 edition = "2018"
@@ -8,4 +8,3 @@ edition = "2018"
 
 [dependencies]
 syntax = { path = "../syntax" }
-hir = { path = "../hir" }

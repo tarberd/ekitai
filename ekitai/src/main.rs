@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
-use syntax::cst::source_file::SourceFile;
-use syntax::cst::expression::Expression;
+use syntax::cst::Expression;
+use syntax::cst::SourceFile;
 
 fn main() {
     let args: Vec<_> = std::env::args()
@@ -29,10 +29,14 @@ fn drive(source: String) {
             println!("body: {}", body);
             let tail = body.tail_expression().unwrap();
             println!("tail: {}", tail);
-            println!("{:?}", match tail {
-                Expression::InfixExpression(x) => (x.lhs(), x.rhs()),
+            match tail {
+                Expression::InfixExpression(x) => {
+                    println!("({}, {})", x.lhs().unwrap(), x.rhs().unwrap())
+                }
                 _ => panic!("fuck u"),
-            });
+            };
         }
     }
+    let hir_root = hir::Module::lower(source_file);
+    println!("{:#?}", hir_root);
 }

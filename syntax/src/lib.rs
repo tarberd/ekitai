@@ -6,10 +6,10 @@ pub mod parser;
 mod tests;
 
 use crate::parser::SyntaxError;
-use cst::source_file::SourceFile;
+use cst::raw::SyntaxNode;
+use cst::SourceFile;
 use rowan::GreenNode;
 use std::convert::TryFrom;
-use cst::raw::SyntaxNode;
 
 #[derive(Debug)]
 pub struct Parse {
@@ -19,10 +19,7 @@ pub struct Parse {
 
 impl Parse {
     fn new(green_node: GreenNode, errors: Vec<SyntaxError>) -> Self {
-        Self {
-            green_node,
-            errors,
-        }
+        Self { green_node, errors }
     }
 
     fn syntax_node(&self) -> SyntaxNode {
