@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use syntax::cst::Expression;
+use syntax::cst::LiteralKind;
 use syntax::cst::SourceFile;
 
 fn main() {
@@ -31,7 +32,27 @@ fn drive(source: String) {
             println!("tail: {}", tail);
             match tail {
                 Expression::InfixExpression(x) => {
-                    println!("({}, {})", x.lhs().unwrap(), x.rhs().unwrap())
+                    println!("({}, {})", x.lhs().unwrap(), x.rhs().unwrap());
+                    match x.lhs().unwrap() {
+                        Expression::Literal(lit) => match lit.literal_kind().unwrap() {
+                            LiteralKind::Integer(int) => println!(
+                                "radical: {} sufix {}",
+                                int.radical_and_sufix().0,
+                                int.radical_and_sufix().1.unwrap()
+                            ),
+                        },
+                        _ => panic!(),
+                    }
+                    match x.rhs().unwrap() {
+                        Expression::Literal(lit) => match lit.literal_kind().unwrap() {
+                            LiteralKind::Integer(int) => println!(
+                                "radical: {} sufix {}",
+                                int.radical_and_sufix().0,
+                                int.radical_and_sufix().1.unwrap()
+                            ),
+                        },
+                        _ => panic!(),
+                    }
                 }
                 _ => panic!("fuck u"),
             };

@@ -72,9 +72,23 @@ pub enum Literal {
 
 impl Literal {
     fn lower(lit: cst::Literal) -> Option<Self> {
-        match lit.literal_kind()? {
-            cst::LiteralKind::Integer(_) => None,
-        }
+        Some(match lit.literal_kind()? {
+            cst::LiteralKind::Integer(integer) => {
+                let (radical, sufix) = integer.radical_and_sufix();
+                match sufix? {
+                    "i32" => Literal::Integer(
+                        radical
+                            .chars()
+                            .filter(|c| *c != '_')
+                            .collect::<String>()
+                            .parse()
+                            .ok()?,
+                        IntegerKind::I32,
+                    ),
+                    _ => return None,
+                }
+            }
+        })
     }
 }
 

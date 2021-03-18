@@ -18,6 +18,14 @@ impl Integer {
     pub fn text(&self) -> &str {
         self.as_syntax_token().text()
     }
+
+    pub fn radical_and_sufix(&self) -> (&str, Option<&str>) {
+        if let Some((index, _)) = self.text().char_indices().find(|(_, c)| c.is_alphabetic()) {
+            (&self.text()[0..index], Some(&self.text()[index..]))
+        } else {
+            (self.text(), None)
+        }
+    }
 }
 
 impl std::fmt::Display for Integer {
@@ -36,4 +44,3 @@ impl std::convert::TryFrom<SyntaxToken> for Integer {
         }
     }
 }
-

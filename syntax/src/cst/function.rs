@@ -2,6 +2,7 @@ use super::{expression::BlockExpression, name::Name, raw::SyntaxNode, CstNode, S
 use parser::SyntaxKind;
 use std::{convert::TryFrom, fmt::Display};
 
+#[derive(Debug)]
 pub struct Function(SyntaxNode);
 
 impl CstNode for Function {

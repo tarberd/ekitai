@@ -6,6 +6,7 @@ use parser::SyntaxKind;
 use std::convert::TryFrom;
 use std::fmt::Display;
 
+#[derive(Debug)]
 pub struct SourceFile(SyntaxNode);
 
 impl CstNode for SourceFile {

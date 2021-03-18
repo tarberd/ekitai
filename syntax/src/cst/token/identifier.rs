@@ -2,6 +2,7 @@ use super::super::{raw::SyntaxToken, CstToken, SyntaxToAstError};
 use parser::SyntaxKind;
 use std::{convert::TryFrom, fmt::Display};
 
+#[derive(Debug)]
 pub struct Identifier(SyntaxToken);
 
 impl CstToken for Identifier {

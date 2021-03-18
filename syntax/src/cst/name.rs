@@ -2,6 +2,7 @@ use super::{raw::SyntaxNode, token::Identifier, CstNode, SyntaxToAstError};
 use parser::SyntaxKind;
 use std::{convert::TryFrom, fmt::Display};
 
+#[derive(Debug)]
 pub struct Name(SyntaxNode);
 
 impl CstNode for Name {
