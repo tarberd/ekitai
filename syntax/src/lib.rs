@@ -30,6 +30,10 @@ impl Parse {
         SourceFile::try_from(self.syntax_node()).ok().unwrap()
     }
 
+    pub fn errors(&self) -> &Vec<SyntaxError> {
+        &self.errors
+    }
+
     pub fn debug_dump(&self) -> String {
         let tree = format!("{:#?}", self.syntax_node());
         tree[..tree.len() - 1].to_string()

@@ -9,12 +9,13 @@ impl Literal {
         SyntaxKind::Literal
     }
 
-    pub fn literal_kind(&self) -> Option<LiteralKind> {
+    pub fn literal_kind(&self) -> LiteralKind {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
             .find_map(|tok| LiteralKind::try_from(tok).ok())
+            .unwrap()
     }
 }
 

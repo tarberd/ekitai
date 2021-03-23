@@ -16,11 +16,12 @@ impl Name {
         SyntaxKind::Name
     }
 
-    pub fn identifier(&self) -> Option<Identifier> {
+    pub fn identifier(&self) -> Identifier {
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
             .find_map(|it| Identifier::try_from(it).ok())
+            .unwrap()
     }
 }
 

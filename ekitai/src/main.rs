@@ -1,7 +1,5 @@
 use std::fs;
 use std::path::PathBuf;
-use syntax::cst::Expression;
-use syntax::cst::LiteralKind;
 use syntax::cst::SourceFile;
 
 fn main() {
@@ -22,42 +20,9 @@ fn main() {
 fn drive(source: String) {
     let parse = SourceFile::parse(&source);
     println!("{}", parse.debug_dump());
-    let source_file = parse.ast_node();
-    println!("{}", source_file);
-    let functions = source_file.functions();
-    for fun in functions {
-        if let Some(body) = fun.body() {
-            println!("body: {}", body);
-            let tail = body.tail_expression().unwrap();
-            println!("tail: {}", tail);
-            match tail {
-                Expression::InfixExpression(x) => {
-                    println!("({}, {})", x.lhs().unwrap(), x.rhs().unwrap());
-                    match x.lhs().unwrap() {
-                        Expression::Literal(lit) => match lit.literal_kind().unwrap() {
-                            LiteralKind::Integer(int) => println!(
-                                "radical: {} sufix {}",
-                                int.radical_and_sufix().0,
-                                int.radical_and_sufix().1.unwrap()
-                            ),
-                        },
-                        _ => panic!(),
-                    }
-                    match x.rhs().unwrap() {
-                        Expression::Literal(lit) => match lit.literal_kind().unwrap() {
-                            LiteralKind::Integer(int) => println!(
-                                "radical: {} sufix {}",
-                                int.radical_and_sufix().0,
-                                int.radical_and_sufix().1.unwrap()
-                            ),
-                        },
-                        _ => panic!(),
-                    }
-                }
-                _ => panic!("fuck u"),
-            };
-        }
-    }
-    let hir_root = hir::Module::lower(source_file);
-    println!("{:#?}", hir_root);
+    println!("Syntax Errors: {:#?}", parse.errors());
+
+    let lower = hir::Module::lower(parse.ast_node());
+    println!("{:#?}", lower.0);
+    println!("Lower Errors: {:#?}", lower.1);
 }
