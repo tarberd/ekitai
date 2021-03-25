@@ -1,9 +1,12 @@
+pub mod type_check;
+
+use smol_str::SmolStr;
 use syntax::cst;
 
 #[derive(Debug)]
 pub enum LowerError {
     IntegerTooBig,
-    InvalidIntegerSufix,
+    InvalidIntegerSufix(SmolStr),
 }
 
 #[derive(Debug)]
@@ -13,17 +16,22 @@ pub struct Module {
 
 impl Module {
     pub fn lower(source: cst::SourceFile) -> (Self, Vec<LowerError>) {
-        let lower = source.functions().map(|f| Function::lower(f)).fold(
+        let lowered = source.functions().fold(
             (Vec::new(), Vec::new()),
-            |(mut functions, mut diagnostics), (function, mut errors)| {
-                diagnostics.append(&mut errors);
-                if let Some(fun) = function {
+            |(mut functions, diagnostics), function| {
+                let lowered = Function::lower(function, diagnostics);
+                if let Some(fun) = lowered.0 {
                     functions.push(fun);
                 }
-                (functions, diagnostics)
+                (functions, lowered.1)
             },
         );
-        (Self { functions: lower.0 }, lower.1)
+        (
+            Self {
+                functions: lowered.0,
+            },
+            lowered.1,
+        )
     }
 }
 
@@ -34,11 +42,8 @@ pub struct Function {
 }
 
 impl Function {
-    fn lower(f: cst::Function) -> (Option<Self>, Vec<LowerError>) {
-        let mut lower = BlockExpression::lower(f.body().unwrap());
-        let mut diagnostics = Vec::new();
-        diagnostics.append(&mut lower.1);
-
+    fn lower(f: cst::Function, diagnostics: Vec<LowerError>) -> (Option<Self>, Vec<LowerError>) {
+        let lower = BlockExpression::lower(f.body().unwrap(), diagnostics);
         let fun = match f.name() {
             Some(name) => Some(Self {
                 name: name.identifier().text().to_string(),
@@ -46,7 +51,7 @@ impl Function {
             }),
             None => None,
         };
-        (fun, diagnostics)
+        (fun, lower.1)
     }
 }
 
@@ -58,32 +63,38 @@ pub enum Expression {
 }
 
 impl Expression {
-    fn lower(expr: cst::Expression) -> (Self, Vec<LowerError>) {
+    fn lower(expr: cst::Expression, diagnostics: Vec<LowerError>) -> (Self, Vec<LowerError>) {
         match expr {
             cst::Expression::BlockExpression(block) => {
-                let lower = BlockExpression::lower(block);
+                let lower = BlockExpression::lower(block, diagnostics);
                 (Self::BlockExpression(Box::new(lower.0)), lower.1)
             }
             cst::Expression::Literal(literal) => {
-                let lower = Literal::lower(literal);
+                let lower = Literal::lower(literal, diagnostics);
                 (Self::Literal(lower.0), lower.1)
             }
             cst::Expression::InfixExpression(infix) => {
-                let mut diagnostics = Vec::new();
-                let mut lower_lhs = Expression::lower(match infix.lhs() {
-                    Some(expr) => expr,
-                    None => todo!("todo missing lhs form infix expression"),
-                });
-                let mut lower_rhs = Expression::lower(match infix.rhs() {
-                    Some(expr) => expr,
-                    None => todo!("todo missing rhs form infix expression"),
-                });
-                diagnostics.append(&mut lower_lhs.1);
-                diagnostics.append(&mut lower_rhs.1);
+                let lower_lhs = Expression::lower(
+                    match infix.lhs() {
+                        Some(expr) => expr,
+                        None => todo!("todo missing lhs form infix expression"),
+                    },
+                    diagnostics,
+                );
+                let lower_rhs = Expression::lower(
+                    match infix.rhs() {
+                        Some(expr) => expr,
+                        None => todo!("todo missing rhs form infix expression"),
+                    },
+                    lower_lhs.1,
+                );
                 (
                     Self::InfixExpression(Box::new(lower_lhs.0), Box::new(lower_rhs.0)),
-                    diagnostics,
+                    lower_rhs.1,
                 )
+            }
+            cst::Expression::ParenthesisExpression(parenthesis) => {
+                Expression::lower(parenthesis.inner_expression().unwrap_or_else(|| todo!("alskdhflakshd")), diagnostics)
             }
         }
     }
@@ -95,17 +106,17 @@ pub struct BlockExpression {
 }
 
 impl BlockExpression {
-    fn lower(b: cst::BlockExpression) -> (Self, Vec<LowerError>) {
-        let mut diagnostics = Vec::new();
-        let tail_expression = match b.tail_expression() {
-            Some(tail) => {
-                let mut lower = Expression::lower(tail);
-                diagnostics.append(&mut lower.1);
-                lower.0
-            }
+    fn lower(b: cst::BlockExpression, diagnostics: Vec<LowerError>) -> (Self, Vec<LowerError>) {
+        let lowered = match b.tail_expression() {
+            Some(tail) => Expression::lower(tail, diagnostics),
             None => todo!("implement for missing tail expression"),
         };
-        (Self { tail_expression }, diagnostics)
+        (
+            Self {
+                tail_expression: lowered.0,
+            },
+            lowered.1,
+        )
     }
 }
 
@@ -115,21 +126,31 @@ pub enum Literal {
 }
 
 impl Literal {
-    fn lower(lit: cst::Literal) -> (Self, Vec<LowerError>) {
-        let mut diagnostics = Vec::new();
-
+    fn lower(lit: cst::Literal, mut diagnostics: Vec<LowerError>) -> (Self, Vec<LowerError>) {
         let lit = match lit.literal_kind() {
             cst::LiteralKind::Integer(integer) => {
                 let (radical, sufix) = integer.radical_and_sufix();
+
+                let kind = match sufix {
+                    Some("i32") => IntegerKind::I32,
+                    Some(invalid_sufix) => {
+                        diagnostics.push(LowerError::InvalidIntegerSufix(invalid_sufix.into()));
+                        IntegerKind::Unsufixed
+                    }
+                    None => IntegerKind::Unsufixed,
+                };
 
                 let value = match radical
                     .chars()
                     .filter(|c| *c != '_')
                     .collect::<String>()
-                    .parse()
+                    .parse::<u128>()
                     .ok()
                 {
-                    Some(parse) => parse,
+                    Some(value) => match kind {
+                        IntegerKind::Unsufixed => value,
+                        IntegerKind::I32 => value,
+                    },
                     None => {
                         // larger than u128
                         diagnostics.push(LowerError::IntegerTooBig);
@@ -137,14 +158,7 @@ impl Literal {
                     }
                 };
 
-                match sufix {
-                    Some("i32") => Literal::Integer(value, IntegerKind::I32),
-                    _ => {
-                        // invalid sufix
-                        diagnostics.push(LowerError::InvalidIntegerSufix);
-                        Literal::Integer(value, IntegerKind::Unsufixed)
-                    }
-                }
+                Literal::Integer(value, kind)
             }
         };
 
