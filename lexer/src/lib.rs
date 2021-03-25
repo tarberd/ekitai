@@ -206,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn lex_underscore_integer_with_sufix() {
+    fn lex_underscore_integer_with_suffix() {
         check("1234__0987__Abacate_45", TokenKind::Integer);
     }
 
@@ -216,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn lex_long_integer_with_sufix() {
+    fn lex_long_integer_with_suffix() {
         check(
             "1234123__4132409__780987099876589756__45_B4l3_14_",
             TokenKind::Integer,

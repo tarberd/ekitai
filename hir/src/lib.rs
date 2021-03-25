@@ -6,7 +6,7 @@ use syntax::cst;
 #[derive(Debug)]
 pub enum LowerError {
     IntegerTooBig,
-    InvalidIntegerSufix(SmolStr),
+    InvalidIntegerSuffix(SmolStr),
 }
 
 #[derive(Debug)]
@@ -129,15 +129,15 @@ impl Literal {
     fn lower(lit: cst::Literal, mut diagnostics: Vec<LowerError>) -> (Self, Vec<LowerError>) {
         let lit = match lit.literal_kind() {
             cst::LiteralKind::Integer(integer) => {
-                let (radical, sufix) = integer.radical_and_sufix();
+                let (radical, suffix) = integer.radical_and_suffix();
 
-                let kind = match sufix {
+                let kind = match suffix {
                     Some("i32") => IntegerKind::I32,
-                    Some(invalid_sufix) => {
-                        diagnostics.push(LowerError::InvalidIntegerSufix(invalid_sufix.into()));
-                        IntegerKind::Unsufixed
+                    Some(invalid_suffix) => {
+                        diagnostics.push(LowerError::InvalidIntegerSuffix(invalid_suffix.into()));
+                        IntegerKind::Unsuffixed
                     }
-                    None => IntegerKind::Unsufixed,
+                    None => IntegerKind::Unsuffixed,
                 };
 
                 let value = match radical
@@ -148,7 +148,7 @@ impl Literal {
                     .ok()
                 {
                     Some(value) => match kind {
-                        IntegerKind::Unsufixed => value,
+                        IntegerKind::Unsuffixed => value,
                         IntegerKind::I32 => value,
                     },
                     None => {
@@ -168,6 +168,6 @@ impl Literal {
 
 #[derive(Debug)]
 pub enum IntegerKind {
-    Unsufixed,
+    Unsuffixed,
     I32,
 }
