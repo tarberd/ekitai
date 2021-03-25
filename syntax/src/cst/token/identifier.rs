@@ -1,6 +1,5 @@
 use super::super::{raw::SyntaxToken, CstToken, SyntaxToAstError};
 use parser::SyntaxKind;
-use std::{convert::TryFrom, fmt::Display};
 
 #[derive(Debug)]
 pub struct Identifier(SyntaxToken);
@@ -21,13 +20,13 @@ impl Identifier {
     }
 }
 
-impl Display for Identifier {
+impl std::fmt::Display for Identifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self.as_syntax_token(), f)
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
     }
 }
 
-impl TryFrom<SyntaxToken> for Identifier {
+impl std::convert::TryFrom<SyntaxToken> for Identifier {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {

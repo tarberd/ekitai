@@ -39,7 +39,7 @@ pub fn type_check_expression(
 ) -> (Option<Type>, Vec<TypeError>) {
     match expr {
         Expression::BlockExpression(e) => type_check_block(e, errors),
-        Expression::InfixExpression(lhs, rhs) => {
+        Expression::InfixExpression(lhs, _, rhs) => {
             let (left_type, errors) = type_check_expression(lhs, errors);
             let (right_type, mut errors) = type_check_expression(rhs, errors);
             match (left_type, right_type) {

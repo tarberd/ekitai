@@ -11,7 +11,7 @@ pub enum LowerError {
 
 #[derive(Debug)]
 pub struct Module {
-    functions: Vec<Function>,
+    pub functions: Vec<Function>,
 }
 
 impl Module {
@@ -37,8 +37,8 @@ impl Module {
 
 #[derive(Debug)]
 pub struct Function {
-    name: String,
-    body: BlockExpression,
+    pub name: String,
+    pub body: BlockExpression,
 }
 
 impl Function {
@@ -56,9 +56,18 @@ impl Function {
 }
 
 #[derive(Debug)]
+pub enum InfixOperator {
+    Add,
+    Sub,
+    Div,
+    Mul,
+    Rem,
+}
+
+#[derive(Debug)]
 pub enum Expression {
     BlockExpression(Box<BlockExpression>),
-    InfixExpression(Box<Expression>, Box<Expression>),
+    InfixExpression(Box<Expression>, InfixOperator, Box<Expression>),
     Literal(Literal),
 }
 
@@ -74,28 +83,41 @@ impl Expression {
                 (Self::Literal(lower.0), lower.1)
             }
             cst::Expression::InfixExpression(infix) => {
-                let lower_lhs = Expression::lower(
+                let (lhs, diagnostics) = Expression::lower(
                     match infix.lhs() {
                         Some(expr) => expr,
                         None => todo!("todo missing lhs from infix expression"),
                     },
                     diagnostics,
                 );
-                let lower_rhs = Expression::lower(
+                let (rhs, diagnostics) = Expression::lower(
                     match infix.rhs() {
                         Some(expr) => expr,
                         None => todo!("todo missing rhs from infix expression"),
                     },
-                    lower_lhs.1,
+                    diagnostics,
                 );
+                let operator = match infix.infix_operator() {
+                    Some(op) => match op {
+                        cst::InfixOperator::Plus(_) => InfixOperator::Add,
+                        cst::InfixOperator::Minus(_) => InfixOperator::Sub,
+                        cst::InfixOperator::Asterisk(_) => InfixOperator::Mul,
+                        cst::InfixOperator::Slash(_) => InfixOperator::Div,
+                        cst::InfixOperator::Percent(_) => InfixOperator::Rem,
+                    },
+                    None => todo!("missing infix expression operator"),
+                };
                 (
-                    Self::InfixExpression(Box::new(lower_lhs.0), Box::new(lower_rhs.0)),
-                    lower_rhs.1,
+                    Self::InfixExpression(Box::new(lhs), operator, Box::new(rhs)),
+                    diagnostics,
                 )
             }
-            cst::Expression::ParenthesisExpression(parenthesis) => {
-                Expression::lower(parenthesis.inner_expression().unwrap_or_else(|| todo!("todo missing inner nested expression")), diagnostics)
-            }
+            cst::Expression::ParenthesisExpression(parenthesis) => Expression::lower(
+                parenthesis
+                    .inner_expression()
+                    .unwrap_or_else(|| todo!("todo missing inner nested expression")),
+                diagnostics,
+            ),
         }
     }
 }

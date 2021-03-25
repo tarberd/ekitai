@@ -30,4 +30,6 @@ fn drive(source: String) {
     let errors = hir::type_check::type_check_module(&module);
 
     println!("Type Errors: {:#?}", errors);
+
+    codegen::build_assembly_ir(&module);
 }
