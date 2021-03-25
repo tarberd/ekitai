@@ -17,12 +17,17 @@ fn main() {
     }
 }
 
+
 fn drive(source: String) {
     let parse = SourceFile::parse(&source);
     println!("{}", parse.debug_dump());
     println!("Syntax Errors: {:#?}", parse.errors());
 
-    let lower = hir::Module::lower(parse.ast_node());
-    println!("{:#?}", lower.0);
-    println!("Lower Errors: {:#?}", lower.1);
+    let (module, errors) = hir::Module::lower(parse.ast_node());
+    println!("{:#?}", module);
+    println!("Lower Errors: {:#?}", errors);
+
+    let errors = hir::type_check::type_check_module(&module);
+
+    println!("Type Errors: {:#?}", errors);
 }

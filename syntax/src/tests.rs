@@ -1,15 +1,16 @@
 use super::*;
 use ::parser::{ParseError, SyntaxKind};
 use expect_test::expect;
+use rowan::TextRange;
 
 fn check(input: &str, expected_tree: expect_test::Expect) {
-    let parse = parser::parse_text(input);
+    let parse = SourceFile::parse(input);
     expected_tree.assert_eq(&parse.debug_dump());
 }
 
 #[test]
 fn parse_empty() {
-    check("", expect![["EkitaiSource@0..0"]]);
+    check("", expect![[r#"SourceFile@0..0"#]]);
 }
 
 #[test]
@@ -17,7 +18,7 @@ fn parse_function_definition() {
     check(
         "fn id() -> i32 { 5 }",
         expect![[r#"
-            EkitaiSource@0..20
+            SourceFile@0..20
               FunctionDefinition@0..20
                 FnKw@0..2 "fn"
                 Whitespace@2..3 " "
@@ -43,9 +44,9 @@ fn parse_function_definition() {
 
 #[test]
 fn parse_function_definition_missing_type_id() {
-    let parse = parser::parse_text("fn foo() ->");
+    let parse = SourceFile::parse("fn foo() ->");
     let expected_tree = expect![[r#"
-        EkitaiSource@0..11
+        SourceFile@0..11
           FunctionDefinition@0..11
             FnKw@0..2 "fn"
             Whitespace@2..3 " "
@@ -74,7 +75,7 @@ fn parse_function_half() {
     check(
         "fn foo fn id() -> i32",
         expect![[r#"
-            EkitaiSource@0..21
+            SourceFile@0..21
               FunctionDefinition@0..7
                 FnKw@0..2 "fn"
                 Whitespace@2..3 " "
@@ -101,7 +102,7 @@ fn parse_expression() {
     check(
         "fn id() -> i32 { 1 + -5 + 9 * a - 1 -2 -3  }",
         expect![[r#"
-            EkitaiSource@0..44
+            SourceFile@0..44
               FunctionDefinition@0..44
                 FnKw@0..2 "fn"
                 Whitespace@2..3 " "

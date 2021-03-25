@@ -3,7 +3,7 @@ pub mod type_check;
 use smol_str::SmolStr;
 use syntax::cst;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LowerError {
     IntegerTooBig,
     InvalidIntegerSuffix(SmolStr),
@@ -77,14 +77,14 @@ impl Expression {
                 let lower_lhs = Expression::lower(
                     match infix.lhs() {
                         Some(expr) => expr,
-                        None => todo!("todo missing lhs form infix expression"),
+                        None => todo!("todo missing lhs from infix expression"),
                     },
                     diagnostics,
                 );
                 let lower_rhs = Expression::lower(
                     match infix.rhs() {
                         Some(expr) => expr,
-                        None => todo!("todo missing rhs form infix expression"),
+                        None => todo!("todo missing rhs from infix expression"),
                     },
                     lower_lhs.1,
                 );
@@ -94,7 +94,7 @@ impl Expression {
                 )
             }
             cst::Expression::ParenthesisExpression(parenthesis) => {
-                Expression::lower(parenthesis.inner_expression().unwrap_or_else(|| todo!("alskdhflakshd")), diagnostics)
+                Expression::lower(parenthesis.inner_expression().unwrap_or_else(|| todo!("todo missing inner nested expression")), diagnostics)
             }
         }
     }
