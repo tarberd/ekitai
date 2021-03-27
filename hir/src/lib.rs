@@ -56,7 +56,7 @@ impl Function {
 }
 
 #[derive(Debug)]
-pub enum InfixOperator {
+pub enum BinaryOperator {
     Add,
     Sub,
     Div,
@@ -65,9 +65,15 @@ pub enum InfixOperator {
 }
 
 #[derive(Debug)]
+pub enum UnaryOperator {
+    Minus,
+}
+
+#[derive(Debug)]
 pub enum Expression {
     BlockExpression(Box<BlockExpression>),
-    InfixExpression(Box<Expression>, InfixOperator, Box<Expression>),
+    BinaryExpression(Box<Expression>, BinaryOperator, Box<Expression>),
+    UnaryExpression(Box<Expression>, UnaryOperator),
     Literal(Literal),
 }
 
@@ -97,18 +103,36 @@ impl Expression {
                     },
                     diagnostics,
                 );
-                let operator = match infix.infix_operator() {
+                let operator = match infix.operator() {
                     Some(op) => match op {
-                        cst::InfixOperator::Plus(_) => InfixOperator::Add,
-                        cst::InfixOperator::Minus(_) => InfixOperator::Sub,
-                        cst::InfixOperator::Asterisk(_) => InfixOperator::Mul,
-                        cst::InfixOperator::Slash(_) => InfixOperator::Div,
-                        cst::InfixOperator::Percent(_) => InfixOperator::Rem,
+                        cst::BinaryOperator::Plus(_) => BinaryOperator::Add,
+                        cst::BinaryOperator::Minus(_) => BinaryOperator::Sub,
+                        cst::BinaryOperator::Asterisk(_) => BinaryOperator::Mul,
+                        cst::BinaryOperator::Slash(_) => BinaryOperator::Div,
+                        cst::BinaryOperator::Percent(_) => BinaryOperator::Rem,
                     },
                     None => todo!("missing infix expression operator"),
                 };
                 (
-                    Self::InfixExpression(Box::new(lhs), operator, Box::new(rhs)),
+                    Self::BinaryExpression(Box::new(lhs), operator, Box::new(rhs)),
+                    diagnostics,
+                )
+            }
+            cst::Expression::PrefixExpression(prefix) => {
+                let (inner, diagnostics) = Expression::lower(
+                    prefix.inner().unwrap_or_else(|| {
+                        todo!("todo missing inner expression on prefix expression")
+                    }),
+                    diagnostics,
+                );
+                let operator = match prefix.operator() {
+                    Some(op) => match op {
+                        cst::UnaryOperator::Minus(_) => UnaryOperator::Minus,
+                    },
+                    None => todo!("missing prefix expression operator"),
+                };
+                (
+                    Self::UnaryExpression(Box::new(inner), operator),
                     diagnostics,
                 )
             }

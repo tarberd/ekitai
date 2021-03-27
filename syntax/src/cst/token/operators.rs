@@ -182,7 +182,7 @@ impl std::convert::TryFrom<SyntaxToken> for Percent {
 }
 
 #[derive(Debug)]
-pub enum InfixOperator {
+pub enum BinaryOperator {
     Plus(Plus),
     Minus(Minus),
     Asterisk(Asterisk),
@@ -190,7 +190,7 @@ pub enum InfixOperator {
     Percent(Percent),
 }
 
-impl CstToken for InfixOperator {
+impl CstToken for BinaryOperator {
     fn as_syntax_token(&self) -> &SyntaxToken {
         match self {
             Self::Plus(tok) => tok.as_syntax_token(),
@@ -202,7 +202,7 @@ impl CstToken for InfixOperator {
     }
 }
 
-impl InfixOperator {
+impl BinaryOperator {
     fn try_from_set() -> &'static [SyntaxKind] {
         static KINDS: &[SyntaxKind] = &[
             SyntaxKind::Plus,
@@ -226,13 +226,59 @@ impl InfixOperator {
     }
 }
 
-impl std::fmt::Display for InfixOperator {
+impl std::fmt::Display for BinaryOperator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.as_syntax_token(), f)
     }
 }
 
-impl std::convert::TryFrom<SyntaxToken> for InfixOperator {
+impl std::convert::TryFrom<SyntaxToken> for BinaryOperator {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if Self::try_from_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
+            other => Err(Self::Error::new(Self::try_from_set()[0], other)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum UnaryOperator {
+    Minus(Minus),
+}
+
+impl CstToken for UnaryOperator {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        match self {
+            Self::Minus(tok) => tok.as_syntax_token(),
+        }
+    }
+}
+
+impl UnaryOperator {
+    fn try_from_set() -> &'static [SyntaxKind] {
+        static KINDS: &[SyntaxKind] = &[
+            SyntaxKind::Minus,
+        ];
+        &KINDS
+    }
+
+    fn from_raw_unchecked(raw: SyntaxToken) -> Self {
+        match raw.kind() {
+            SyntaxKind::Minus => Self::Minus(Minus(raw)),
+            _ => panic!(),
+        }
+    }
+}
+
+impl std::fmt::Display for UnaryOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for UnaryOperator {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {

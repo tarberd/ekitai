@@ -1,8 +1,8 @@
 mod identifier;
 mod integer;
 mod literal_kind;
-mod infix_operator;
+mod operators;
 pub use identifier::Identifier;
 pub use integer::Integer;
 pub use literal_kind::LiteralKind;
-pub use infix_operator::{Plus, InfixOperator};
+pub use operators::{Asterisk, BinaryOperator, Minus, Percent, Plus, Slash, UnaryOperator};

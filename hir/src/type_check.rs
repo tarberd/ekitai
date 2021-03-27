@@ -39,7 +39,7 @@ pub fn type_check_expression(
 ) -> (Option<Type>, Vec<TypeError>) {
     match expr {
         Expression::BlockExpression(e) => type_check_block(e, errors),
-        Expression::InfixExpression(lhs, _, rhs) => {
+        Expression::BinaryExpression(lhs, _, rhs) => {
             let (left_type, errors) = type_check_expression(lhs, errors);
             let (right_type, mut errors) = type_check_expression(rhs, errors);
             match (left_type, right_type) {
@@ -57,6 +57,7 @@ pub fn type_check_expression(
                 _ => (None, errors),
             }
         }
+        Expression::UnaryExpression(inner, _) => type_check_expression(inner, errors),
         Expression::Literal(literal) => match literal {
             Literal::Integer(_, kind) => match kind {
                 IntegerKind::I32 => (Some(Type::I32), errors),

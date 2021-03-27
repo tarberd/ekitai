@@ -9,7 +9,10 @@ pub use expression::{BlockExpression, Expression, InfixExpression, Literal};
 pub use function::Function;
 pub use name::Name;
 pub use source_file::SourceFile;
-pub use token::{Identifier, InfixOperator, Integer, LiteralKind, Plus};
+pub use token::{
+    Asterisk, BinaryOperator, Identifier, Integer, LiteralKind, Minus, Percent, Plus, Slash,
+    UnaryOperator,
+};
 
 use parser::SyntaxKind;
 use raw::{SyntaxNode, SyntaxToken};

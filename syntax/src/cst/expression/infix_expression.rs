@@ -1,5 +1,5 @@
 use super::{
-    super::{raw::SyntaxNode, token::InfixOperator, CstNode, SyntaxToAstError},
+    super::{raw::SyntaxNode, token::BinaryOperator, CstNode, SyntaxToAstError},
     Expression,
 };
 use parser::SyntaxKind;
@@ -27,12 +27,12 @@ impl InfixExpression {
             .nth(1)
     }
 
-    pub fn infix_operator(&self) -> Option<InfixOperator> {
+    pub fn operator(&self) -> Option<BinaryOperator> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
-            .find_map(|tok| InfixOperator::try_from(tok).ok())
+            .find_map(|tok| BinaryOperator::try_from(tok).ok())
     }
 }
 

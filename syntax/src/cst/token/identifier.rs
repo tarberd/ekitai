@@ -11,7 +11,7 @@ impl CstToken for Identifier {
 }
 
 impl Identifier {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Identifier
     }
 

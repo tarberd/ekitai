@@ -1,4 +1,4 @@
-use hir::Module;
+use hir::{BinaryOperator, BlockExpression, Expression, Literal, Module};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 
@@ -25,7 +25,7 @@ pub fn build_assembly_ir(module: &Module) {
 fn build_block_expression<'context>(
     context: &'context Context,
     builder: &'context Builder,
-    body: &hir::BlockExpression,
+    body: &BlockExpression,
 ) -> inkwell::values::BasicValueEnum<'context> {
     build_expression(context, builder, &body.tail_expression)
 }
@@ -33,37 +33,39 @@ fn build_block_expression<'context>(
 fn build_expression<'context>(
     context: &'context Context,
     builder: &'context Builder,
-    expression: &hir::Expression,
+    expression: &Expression,
 ) -> inkwell::values::BasicValueEnum<'context> {
     match expression {
-        hir::Expression::BlockExpression(block) => build_block_expression(context, builder, block),
-        hir::Expression::InfixExpression(lhs, op, rhs) => {
+        Expression::BlockExpression(block) => build_block_expression(context, builder, block),
+        Expression::BinaryExpression(lhs, op, rhs) => {
             let l_value = build_expression(context, builder, lhs).into_int_value();
             let r_value = build_expression(context, builder, rhs).into_int_value();
             match op {
-                hir::InfixOperator::Add => builder
-                    .build_int_add::<inkwell::values::IntValue>(
-                        l_value,
-                        r_value,
-                        "add",
-                    )
+                BinaryOperator::Add => builder
+                    .build_int_add::<inkwell::values::IntValue>(l_value, r_value, "add")
                     .into(),
-                hir::InfixOperator::Sub => builder
+                BinaryOperator::Sub => builder
                     .build_int_sub::<inkwell::values::IntValue>(l_value, r_value, "sub")
                     .into(),
-                hir::InfixOperator::Div => builder
+                BinaryOperator::Div => builder
                     .build_int_signed_div::<inkwell::values::IntValue>(l_value, r_value, "div")
                     .into(),
-                hir::InfixOperator::Mul => builder
+                BinaryOperator::Mul => builder
                     .build_int_mul::<inkwell::values::IntValue>(l_value, r_value, "mul")
                     .into(),
-                hir::InfixOperator::Rem => builder
+                BinaryOperator::Rem => builder
                     .build_int_signed_rem::<inkwell::values::IntValue>(l_value, r_value, "rem")
                     .into(),
             }
         }
-        hir::Expression::Literal(lit) => match lit {
-            hir::Literal::Integer(value, _suffix) => {
+        Expression::UnaryExpression(inner, op) => {
+            let inner_value = build_expression(context, builder, inner).into_int_value();
+            match op {
+                hir::UnaryOperator::Minus => builder.build_int_neg(inner_value, "neg").into(),
+            }
+        }
+        Expression::Literal(lit) => match lit {
+            Literal::Integer(value, _suffix) => {
                 context.i32_type().const_int(*value as u64, true).into()
             }
         },
