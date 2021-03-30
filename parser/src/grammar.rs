@@ -53,9 +53,7 @@ fn parse_name_reference<S: TokenSource>(p: &mut Parser<S>) {
         p.bump();
         m.complete(p, NameReference);
     } else {
-        p.error(
-            ParseError::new(vec![Identifier], p.current()),
-        );
+        p.error(ParseError::new(vec![Identifier], p.current()));
     }
 }
 
@@ -67,9 +65,7 @@ fn parse_block_expression<S: TokenSource>(p: &mut Parser<S>) {
         p.expect(CloseBraces);
         m.complete(p, BlockExpression);
     } else {
-        p.error(
-            ParseError::new(vec![OpenBraces], p.current()),
-        );
+        p.error(ParseError::new(vec![OpenBraces], p.current()));
     }
 }
 
@@ -90,13 +86,14 @@ enum InfixOp {
     Sub,
     Mul,
     Div,
+    Rest,
 }
 
 impl InfixOp {
     fn binding_power(&self) -> (u8, u8) {
         match self {
             Self::Add | Self::Sub => (1, 2),
-            Self::Mul | Self::Div => (3, 4),
+            Self::Mul | Self::Div | Self::Rest => (3, 4),
         }
     }
 }
@@ -105,7 +102,10 @@ fn expression<S: TokenSource>(p: &mut Parser<S>) {
     expression_binding_power(p, 0);
 }
 
-fn expression_binding_power<S: TokenSource>(p: &mut Parser<S>, minimum_binding_power: u8) -> Option<CompletedMarker> {
+fn expression_binding_power<S: TokenSource>(
+    p: &mut Parser<S>,
+    minimum_binding_power: u8,
+) -> Option<CompletedMarker> {
     let mut lhs = lhs(p)?;
 
     loop {
@@ -117,6 +117,8 @@ fn expression_binding_power<S: TokenSource>(p: &mut Parser<S>, minimum_binding_p
             InfixOp::Mul
         } else if p.at(Slash) {
             InfixOp::Div
+        } else if p.at(Percent) {
+            InfixOp::Rest
         } else {
             // We’re not at an operator; we don’t know what to do next, so we return and let the
             // caller decide.
@@ -154,7 +156,10 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
     } else if p.at(OpenParenthesis) {
         parenthesis_expression(p)
     } else {
-        p.error(ParseError::new(vec![Integer, Identifier, Minus, OpenParenthesis], p.current()));
+        p.error(ParseError::new(
+            vec![Integer, Identifier, Minus, OpenParenthesis],
+            p.current(),
+        ));
         return None;
     };
 
