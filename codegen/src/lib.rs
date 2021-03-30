@@ -69,5 +69,6 @@ fn build_expression<'context>(
                 context.i32_type().const_int(*value as u64, true).into()
             }
         },
+        Expression::NameReference(_) => todo!("todo namereference code generation"),
     }
 }

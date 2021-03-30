@@ -1,6 +1,7 @@
 mod expression;
 mod function;
 mod name;
+mod name_ref;
 pub mod raw;
 mod source_file;
 mod token;
@@ -8,6 +9,7 @@ mod token;
 pub use expression::{BlockExpression, Expression, InfixExpression, Literal};
 pub use function::Function;
 pub use name::Name;
+pub use name_ref::NameReference;
 pub use source_file::SourceFile;
 pub use token::{
     Asterisk, BinaryOperator, Identifier, Integer, LiteralKind, Minus, Percent, Plus, Slash,

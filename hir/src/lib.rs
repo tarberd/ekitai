@@ -37,7 +37,7 @@ impl Module {
 
 #[derive(Debug)]
 pub struct Function {
-    pub name: String,
+    pub name: SmolStr,
     pub body: BlockExpression,
 }
 
@@ -46,7 +46,7 @@ impl Function {
         let lower = BlockExpression::lower(f.body().unwrap(), diagnostics);
         let fun = match f.name() {
             Some(name) => Some(Self {
-                name: name.identifier().text().to_string(),
+                name: name.identifier().text().into(),
                 body: lower.0,
             }),
             None => None,
@@ -75,6 +75,7 @@ pub enum Expression {
     BinaryExpression(Box<Expression>, BinaryOperator, Box<Expression>),
     UnaryExpression(Box<Expression>, UnaryOperator),
     Literal(Literal),
+    NameReference(SmolStr),
 }
 
 impl Expression {
@@ -88,6 +89,10 @@ impl Expression {
                 let lower = Literal::lower(literal, diagnostics);
                 (Self::Literal(lower.0), lower.1)
             }
+            cst::Expression::NameReference(name_ref) => (
+                Self::NameReference(name_ref.identifier().text().into()),
+                diagnostics,
+            ),
             cst::Expression::InfixExpression(infix) => {
                 let (lhs, diagnostics) = Expression::lower(
                     match infix.lhs() {

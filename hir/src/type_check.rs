@@ -57,6 +57,7 @@ pub fn type_check_expression(
                 _ => (None, errors),
             }
         }
+        Expression::NameReference(..) => (Some(Type::I32), errors),
         Expression::UnaryExpression(inner, _) => type_check_expression(inner, errors),
         Expression::Literal(literal) => match literal {
             Literal::Integer(_, kind) => match kind {
@@ -72,6 +73,8 @@ mod test {
     use super::*;
     #[test]
     fn typecheck() {
+        let a = 5;
+        let b = a + a;
         let src = "fn foo() -> i32 { 5_i32 + 5_i32 }";
         let parse = syntax::cst::SourceFile::parse(&src);
         let (module, errors) = Module::lower(parse.ast_node());
