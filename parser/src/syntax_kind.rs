@@ -6,6 +6,7 @@ pub enum SyntaxKind {
 
     Whitespace,
     Comment,
+    Comma,
     Colon,
     SemiColon,
     OpenParenthesis,

@@ -44,6 +44,7 @@ impl<'i> Iterator for Lexer<'i> {
 fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
     match token {
         TokenKind::Whitespace => SyntaxKind::Whitespace,
+        TokenKind::Comma => SyntaxKind::Comma,
         TokenKind::Comment => SyntaxKind::Comment,
         TokenKind::Colon => SyntaxKind::Colon,
         TokenKind::SemiColon => SyntaxKind::SemiColon,

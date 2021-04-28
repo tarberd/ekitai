@@ -9,6 +9,8 @@ pub enum TokenKind {
     Whitespace,
     #[regex("//.*")]
     Comment,
+    #[token(",")]
+    Comma,
     #[token(":")]
     Colon,
     #[token(";")]
@@ -109,6 +111,11 @@ mod tests {
     #[test]
     fn lex_whitespace() {
         check(" ", TokenKind::Whitespace);
+    }
+
+    #[test]
+    fn lex_comma() {
+        check(",", TokenKind::Comma);
     }
 
     #[test]
