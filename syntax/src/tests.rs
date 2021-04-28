@@ -119,12 +119,13 @@ fn parse_function_with_params() {
                   Identifier@10..12 "id"
                 ParameterList@12..26
                   OpenParenthesis@12..13 "("
-                  Name@13..17
-                    Identifier@13..17 "myid"
-                  Colon@17..18 ":"
-                  Whitespace@18..19 " "
-                  Name@19..25
-                    Identifier@19..25 "mytype"
+                  Parameter@13..25
+                    Name@13..17
+                      Identifier@13..17 "myid"
+                    Colon@17..18 ":"
+                    Whitespace@18..19 " "
+                    NameReference@19..25
+                      Identifier@19..25 "mytype"
                   CloseParenthesis@25..26 ")"
                 Whitespace@26..27 " "
                 Arrow@27..29 "->"

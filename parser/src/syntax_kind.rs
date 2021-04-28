@@ -25,6 +25,7 @@ pub enum SyntaxKind {
 
     FunctionDefinition,
     ParameterList,
+    Parameter,
     Name,
 
     NameReference,

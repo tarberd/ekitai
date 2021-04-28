@@ -53,9 +53,11 @@ fn parse_function_parameters<S: TokenSource>(p: &mut Parser<S>) {
 }
 
 fn parse_parameter<S: TokenSource>(p: &mut Parser<S>) {
+    let m = p.start();
     parse_name(p);
     p.expect(Colon);
-    parse_name(p);
+    parse_name_reference(p);
+    m.complete(p, Parameter);
 }
 
 fn parse_name<S: TokenSource>(p: &mut Parser<S>) {

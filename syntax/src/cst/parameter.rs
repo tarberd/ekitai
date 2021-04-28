@@ -1,19 +1,19 @@
-use super::{raw::SyntaxNode, BlockExpression, CstNode, Name, ParameterList, SyntaxToAstError};
+use super::{raw::SyntaxNode, CstNode, Name, NameReference, SyntaxToAstError};
 use parser::SyntaxKind;
 use std::{convert::TryFrom, fmt::Display};
 
 #[derive(Debug)]
-pub struct Function(SyntaxNode);
+pub struct Parameter(SyntaxNode);
 
-impl CstNode for Function {
+impl CstNode for Parameter {
     fn as_syntax_node(&self) -> &SyntaxNode {
         &self.0
     }
 }
 
-impl Function {
+impl Parameter {
     fn syntax_kind() -> SyntaxKind {
-        SyntaxKind::FunctionDefinition
+        SyntaxKind::Parameter
     }
 
     pub fn name(&self) -> Option<Name> {
@@ -22,26 +22,20 @@ impl Function {
             .find_map(|n| Name::try_from(n).ok())
     }
 
-    pub fn parameter_list(&self) -> Option<ParameterList> {
+    pub fn type_name(&self) -> Option<NameReference> {
         self.as_syntax_node()
             .children()
-            .find_map(|n| ParameterList::try_from(n).ok())
-    }
-
-    pub fn body(&self) -> Option<BlockExpression> {
-        self.as_syntax_node()
-            .children()
-            .find_map(|r| BlockExpression::try_from(r).ok())
+            .find_map(|n| NameReference::try_from(n).ok())
     }
 }
 
-impl Display for Function {
+impl Display for Parameter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl TryFrom<SyntaxNode> for Function {
+impl TryFrom<SyntaxNode> for Parameter {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
