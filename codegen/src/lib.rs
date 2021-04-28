@@ -11,7 +11,7 @@ pub fn build_assembly_ir(module: &Module) {
         let param_types = [];
         let fn_type = context.i32_type().fn_type(&param_types, false);
         let llfunction = llvm_module.add_function(&function.name, fn_type, None);
-        let body = context.append_basic_block(llfunction, "entry");
+        let body = context.append_basic_block(llfunction, "");
         builder.position_at_end(body);
 
         let value = build_block_expression(&context, &builder, &function.body);

@@ -101,7 +101,7 @@ fn parse_function_half() {
 }
 
 #[test]
-fn parse_function_with_params() {
+fn parse_function_with_param() {
     check(
         "fn foo fn id(myid: mytype) -> i32",
         expect![[r#"
@@ -132,6 +132,52 @@ fn parse_function_with_params() {
                 Whitespace@29..30 " "
                 NameReference@30..33
                   Identifier@30..33 "i32""#]],
+    );
+}
+
+#[test]
+fn parse_function_with_multiple_param() {
+    check(
+        "fn foo fn id(myid: mytype, my_id2: m1234, ) -> i32",
+        expect![[r#"
+            SourceFile@0..50
+              FunctionDefinition@0..7
+                FnKw@0..2 "fn"
+                Whitespace@2..3 " "
+                Name@3..6
+                  Identifier@3..6 "foo"
+                Whitespace@6..7 " "
+              FunctionDefinition@7..50
+                FnKw@7..9 "fn"
+                Whitespace@9..10 " "
+                Name@10..12
+                  Identifier@10..12 "id"
+                ParameterList@12..43
+                  OpenParenthesis@12..13 "("
+                  Parameter@13..25
+                    Name@13..17
+                      Identifier@13..17 "myid"
+                    Colon@17..18 ":"
+                    Whitespace@18..19 " "
+                    NameReference@19..25
+                      Identifier@19..25 "mytype"
+                  Comma@25..26 ","
+                  Whitespace@26..27 " "
+                  Parameter@27..40
+                    Name@27..33
+                      Identifier@27..33 "my_id2"
+                    Colon@33..34 ":"
+                    Whitespace@34..35 " "
+                    NameReference@35..40
+                      Identifier@35..40 "m1234"
+                  Comma@40..41 ","
+                  Whitespace@41..42 " "
+                  CloseParenthesis@42..43 ")"
+                Whitespace@43..44 " "
+                Arrow@44..46 "->"
+                Whitespace@46..47 " "
+                NameReference@47..50
+                  Identifier@47..50 "i32""#]],
     );
 }
 

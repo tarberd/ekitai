@@ -40,6 +40,9 @@ fn parse_function_parameters<S: TokenSource>(p: &mut Parser<S>) {
 
         while !p.at(CloseParenthesis) && p.current() != None {
             parse_parameter(p);
+            if p.at(Comma) {
+                p.bump();
+            }
         }
 
         p.expect(CloseParenthesis);
