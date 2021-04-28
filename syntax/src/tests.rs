@@ -24,8 +24,9 @@ fn parse_function_definition() {
                 Whitespace@2..3 " "
                 Name@3..5
                   Identifier@3..5 "id"
-                OpenParenthesis@5..6 "("
-                CloseParenthesis@6..7 ")"
+                ParameterList@5..7
+                  OpenParenthesis@5..6 "("
+                  CloseParenthesis@6..7 ")"
                 Whitespace@7..8 " "
                 Arrow@8..10 "->"
                 Whitespace@10..11 " "
@@ -52,8 +53,9 @@ fn parse_function_definition_missing_type_id() {
             Whitespace@2..3 " "
             Name@3..6
               Identifier@3..6 "foo"
-            OpenParenthesis@6..7 "("
-            CloseParenthesis@7..8 ")"
+            ParameterList@6..8
+              OpenParenthesis@6..7 "("
+              CloseParenthesis@7..8 ")"
             Whitespace@8..9 " "
             Arrow@9..11 "->""#]];
     expected_tree.assert_eq(&parse.debug_dump());
@@ -87,8 +89,9 @@ fn parse_function_half() {
                 Whitespace@9..10 " "
                 Name@10..12
                   Identifier@10..12 "id"
-                OpenParenthesis@12..13 "("
-                CloseParenthesis@13..14 ")"
+                ParameterList@12..14
+                  OpenParenthesis@12..13 "("
+                  CloseParenthesis@13..14 ")"
                 Whitespace@14..15 " "
                 Arrow@15..17 "->"
                 Whitespace@17..18 " "
@@ -98,25 +101,60 @@ fn parse_function_half() {
 }
 
 #[test]
+fn parse_function_with_params() {
+    check(
+        "fn foo fn id(myid: mytype) -> i32",
+        expect![[r#"
+            SourceFile@0..33
+              FunctionDefinition@0..7
+                FnKw@0..2 "fn"
+                Whitespace@2..3 " "
+                Name@3..6
+                  Identifier@3..6 "foo"
+                Whitespace@6..7 " "
+              FunctionDefinition@7..33
+                FnKw@7..9 "fn"
+                Whitespace@9..10 " "
+                Name@10..12
+                  Identifier@10..12 "id"
+                ParameterList@12..26
+                  OpenParenthesis@12..13 "("
+                  Name@13..17
+                    Identifier@13..17 "myid"
+                  Colon@17..18 ":"
+                  Whitespace@18..19 " "
+                  Name@19..25
+                    Identifier@19..25 "mytype"
+                  CloseParenthesis@25..26 ")"
+                Whitespace@26..27 " "
+                Arrow@27..29 "->"
+                Whitespace@29..30 " "
+                NameReference@30..33
+                  Identifier@30..33 "i32""#]],
+    );
+}
+
+#[test]
 fn parse_expression() {
     check(
-        "fn id() -> i32 { 1 + -5 + 9 * a - 1 -2 -3  }",
+        "fn id() -> i32 { 1 + -5 + 9 * a - 1 -2 -3 }",
         expect![[r#"
-            SourceFile@0..44
-              FunctionDefinition@0..44
+            SourceFile@0..43
+              FunctionDefinition@0..43
                 FnKw@0..2 "fn"
                 Whitespace@2..3 " "
                 Name@3..5
                   Identifier@3..5 "id"
-                OpenParenthesis@5..6 "("
-                CloseParenthesis@6..7 ")"
+                ParameterList@5..7
+                  OpenParenthesis@5..6 "("
+                  CloseParenthesis@6..7 ")"
                 Whitespace@7..8 " "
                 Arrow@8..10 "->"
                 Whitespace@10..11 " "
                 NameReference@11..14
                   Identifier@11..14 "i32"
                 Whitespace@14..15 " "
-                BlockExpression@15..44
+                BlockExpression@15..43
                   OpenBraces@15..16 "{"
                   Whitespace@16..17 " "
                   InfixExpression@17..41
@@ -157,7 +195,7 @@ fn parse_expression() {
                     Minus@39..40 "-"
                     Literal@40..41
                       Integer@40..41 "3"
-                  Whitespace@41..43 "  "
-                  CloseBraces@43..44 "}""#]],
+                  Whitespace@41..42 " "
+                  CloseBraces@42..43 "}""#]],
     );
 }

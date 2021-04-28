@@ -10,9 +10,9 @@ pub enum TokenKind {
     #[regex("//.*")]
     Comment,
     #[token(":")]
-    Collon,
+    Colon,
     #[token(";")]
-    SemiCollon,
+    SemiColon,
     #[token("(")]
     OpenParenthesis,
     #[token(")")]
@@ -113,12 +113,12 @@ mod tests {
 
     #[test]
     fn lex_collon() {
-        check(":", TokenKind::Collon);
+        check(":", TokenKind::Colon);
     }
 
     #[test]
     fn lex_semicollon() {
-        check(";", TokenKind::SemiCollon);
+        check(";", TokenKind::SemiColon);
     }
 
     #[test]

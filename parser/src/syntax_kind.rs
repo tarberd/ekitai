@@ -6,8 +6,8 @@ pub enum SyntaxKind {
 
     Whitespace,
     Comment,
-    Collon,
-    SemiCollon,
+    Colon,
+    SemiColon,
     OpenParenthesis,
     CloseParenthesis,
     OpenBraces,
@@ -24,6 +24,7 @@ pub enum SyntaxKind {
     Integer,
 
     FunctionDefinition,
+    ParameterList,
     Name,
 
     NameReference,

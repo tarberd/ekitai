@@ -23,8 +23,7 @@ fn parse_function<S: TokenSource>(p: &mut Parser<S>) {
 
     parse_name(p);
 
-    p.expect(OpenParenthesis);
-    p.expect(CloseParenthesis);
+    parse_function_parameters(p);
     p.expect(Arrow);
 
     parse_name_reference(p);
@@ -32,6 +31,31 @@ fn parse_function<S: TokenSource>(p: &mut Parser<S>) {
     parse_block_expression(p);
 
     m.complete(p, FunctionDefinition);
+}
+
+fn parse_function_parameters<S: TokenSource>(p: &mut Parser<S>) {
+    if p.at(OpenParenthesis) {
+        let m = p.start();
+        p.bump();
+
+        while !p.at(CloseParenthesis) && p.current() != None {
+            parse_parameter(p);
+        }
+
+        p.expect(CloseParenthesis);
+        m.complete(p, ParameterList);
+    } else {
+        p.error_and_recover(
+            ParseError::new(vec![OpenParenthesis], p.current()),
+            ITEM_RECOVERY_SET,
+        );
+    }
+}
+
+fn parse_parameter<S: TokenSource>(p: &mut Parser<S>) {
+    parse_name(p);
+    p.expect(Colon);
+    parse_name(p);
 }
 
 fn parse_name<S: TokenSource>(p: &mut Parser<S>) {

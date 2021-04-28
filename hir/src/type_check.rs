@@ -73,8 +73,6 @@ mod test {
     use super::*;
     #[test]
     fn typecheck() {
-        let a = 5;
-        let b = a + a;
         let src = "fn foo() -> i32 { 5_i32 + 5_i32 }";
         let parse = syntax::cst::SourceFile::parse(&src);
         let (module, errors) = Module::lower(parse.ast_node());

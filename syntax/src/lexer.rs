@@ -45,8 +45,8 @@ fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
     match token {
         TokenKind::Whitespace => SyntaxKind::Whitespace,
         TokenKind::Comment => SyntaxKind::Comment,
-        TokenKind::Collon => SyntaxKind::Collon,
-        TokenKind::SemiCollon => SyntaxKind::SemiCollon,
+        TokenKind::Colon => SyntaxKind::Colon,
+        TokenKind::SemiColon => SyntaxKind::SemiColon,
         TokenKind::OpenParenthesis => SyntaxKind::OpenParenthesis,
         TokenKind::CloseParenthesis => SyntaxKind::CloseParenthesis,
         TokenKind::OpenBraces => SyntaxKind::OpenBraces,
