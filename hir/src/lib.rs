@@ -37,20 +37,20 @@ impl Module {
 
 #[derive(Debug)]
 pub struct Parameter {
-    name: SmolStr,
-    ty: SmolStr,
+    pub name: SmolStr,
+    pub ty: SmolStr,
 }
 
 #[derive(Debug)]
 pub struct Function {
     pub name: SmolStr,
-    pub parameters: Vec<Parameter>,
-    pub body: BlockExpression,
+    pub parameter_types: Vec<SmolStr>,
+    pub return_type: SmolStr,
+    pub body: Body,
 }
 
 impl Function {
     fn lower(f: cst::Function, diagnostics: Vec<LowerError>) -> (Option<Self>, Vec<LowerError>) {
-        let block = BlockExpression::lower(f.body().unwrap(), diagnostics);
         let parameters = {
             if let Some(param_list) = f.parameter_list() {
                 let params = param_list.parameters();
@@ -67,15 +67,19 @@ impl Function {
                 Vec::new()
             }
         };
+
+        let parameter_types = parameters.iter().map(|Parameter{ty, ..}| ty.clone()).collect();
+        let (block, diagnostics) = BlockExpression::lower(f.body().unwrap(), diagnostics);
         let fun = match f.name() {
             Some(name) => Some(Self {
                 name: name.identifier().text().into(),
-                parameters,
-                body: block.0,
+                parameter_types,
+                return_type: "i32".into(),
+                body: Body{ parameters , block},
             }),
             None => None,
         };
-        (fun, block.1)
+        (fun, diagnostics)
     }
 }
 
@@ -173,6 +177,12 @@ impl Expression {
             ),
         }
     }
+}
+
+#[derive(Debug)]
+pub struct Body {
+    pub parameters: Vec<Parameter>,
+    pub block: BlockExpression,
 }
 
 #[derive(Debug)]

@@ -1,4 +1,4 @@
-use super::{BlockExpression, Expression, Function, IntegerKind, Literal, Module};
+use super::{BlockExpression, Body, Expression, Function, IntegerKind, Literal, Module};
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
@@ -22,8 +22,12 @@ pub fn type_check_module(module: &Module) -> Vec<TypeError> {
 }
 
 pub fn type_check_function(func: &Function, errors: Vec<TypeError>) -> Vec<TypeError> {
-    let (_ty, errors) = type_check_block(&func.body, errors);
+    let (_ty, errors) = type_check_body(&func.body, errors);
     errors
+}
+
+pub fn type_check_body(body: &Body, errors: Vec<TypeError>) -> (Option<Type>, Vec<TypeError>) {
+    type_check_block(&body.block, errors)
 }
 
 pub fn type_check_block(
