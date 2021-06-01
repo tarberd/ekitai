@@ -1,5 +1,7 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
+/// SyntaxKind means a token or node kind of the ekitai grammar, without structure.
+/// This is a set of all syntatic category and is equivalent to the nodes and leaves in a syntax tree but only holds its kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum SyntaxKind {
     SourceFile,

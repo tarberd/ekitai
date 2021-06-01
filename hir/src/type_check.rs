@@ -9,6 +9,7 @@ pub enum TypeError {
 #[derive(Debug, PartialEq)]
 pub enum Type {
     I32,
+    Unknown,
 }
 
 pub fn type_check_module(module: &Module) -> Vec<TypeError> {
@@ -47,6 +48,12 @@ pub fn type_check_expression(
             let (left_type, errors) = type_check_expression(lhs, errors);
             let (right_type, mut errors) = type_check_expression(rhs, errors);
             match (left_type, right_type) {
+                (Some(Type::Unknown), Some(r)) => {
+                        (Some(r), errors)
+                }
+                (Some(l), Some(Type::Unknown)) => {
+                        (Some(l), errors)
+                }
                 (Some(l), Some(r)) => {
                     if l == r {
                         (Some(l), errors)
@@ -66,7 +73,7 @@ pub fn type_check_expression(
         Expression::Literal(literal) => match literal {
             Literal::Integer(_, kind) => match kind {
                 IntegerKind::I32 => (Some(Type::I32), errors),
-                IntegerKind::Unsuffixed => todo!("missing infer methods"),
+                IntegerKind::Unsuffixed => (Some(Type::Unknown), errors)
             },
         },
     }
