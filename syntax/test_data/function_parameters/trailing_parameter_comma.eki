@@ -1,0 +1,2 @@
+fn fst(one: tt1,) -> id { 0 }
+fn scn(two: tt2, three: tt3,) -> i32 { 0 }

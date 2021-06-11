@@ -1,0 +1,29 @@
+SourceFile@0..56
+  FunctionDefinition@0..56
+    FnKw@0..2 "fn"
+    Whitespace@2..3 " "
+    Name@3..6
+      Identifier@3..6 "foo"
+    ParameterList@6..25
+      OpenParenthesis@6..7 "("
+      Parameter@7..24
+        Name@7..12
+          Identifier@7..12 "my_id"
+        Colon@12..13 ":"
+        Whitespace@13..14 " "
+        NameReference@14..24
+          Identifier@14..24 "my_type_id"
+      CloseParenthesis@24..25 ")"
+    Whitespace@25..26 " "
+    Arrow@26..28 "->"
+    Whitespace@28..29 " "
+    NameReference@29..46
+      Identifier@29..46 "my_return_type_id"
+    Whitespace@46..47 " "
+    BlockExpression@47..56
+      OpenBraces@47..48 "{"
+      Whitespace@48..49 " "
+      NameReference@49..54
+        Identifier@49..54 "my_id"
+      Whitespace@54..55 " "
+      CloseBraces@55..56 "}"

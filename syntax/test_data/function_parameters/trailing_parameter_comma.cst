@@ -1,0 +1,69 @@
+SourceFile@0..72
+  FunctionDefinition@0..29
+    FnKw@0..2 "fn"
+    Whitespace@2..3 " "
+    Name@3..6
+      Identifier@3..6 "fst"
+    ParameterList@6..17
+      OpenParenthesis@6..7 "("
+      Parameter@7..15
+        Name@7..10
+          Identifier@7..10 "one"
+        Colon@10..11 ":"
+        Whitespace@11..12 " "
+        NameReference@12..15
+          Identifier@12..15 "tt1"
+      Comma@15..16 ","
+      CloseParenthesis@16..17 ")"
+    Whitespace@17..18 " "
+    Arrow@18..20 "->"
+    Whitespace@20..21 " "
+    NameReference@21..23
+      Identifier@21..23 "id"
+    Whitespace@23..24 " "
+    BlockExpression@24..29
+      OpenBraces@24..25 "{"
+      Whitespace@25..26 " "
+      Literal@26..27
+        Integer@26..27 "0"
+      Whitespace@27..28 " "
+      CloseBraces@28..29 "}"
+  Whitespace@29..30 "\n"
+  FunctionDefinition@30..72
+    FnKw@30..32 "fn"
+    Whitespace@32..33 " "
+    Name@33..36
+      Identifier@33..36 "scn"
+    ParameterList@36..59
+      OpenParenthesis@36..37 "("
+      Parameter@37..45
+        Name@37..40
+          Identifier@37..40 "two"
+        Colon@40..41 ":"
+        Whitespace@41..42 " "
+        NameReference@42..45
+          Identifier@42..45 "tt2"
+      Comma@45..46 ","
+      Whitespace@46..47 " "
+      Parameter@47..57
+        Name@47..52
+          Identifier@47..52 "three"
+        Colon@52..53 ":"
+        Whitespace@53..54 " "
+        NameReference@54..57
+          Identifier@54..57 "tt3"
+      Comma@57..58 ","
+      CloseParenthesis@58..59 ")"
+    Whitespace@59..60 " "
+    Arrow@60..62 "->"
+    Whitespace@62..63 " "
+    NameReference@63..66
+      Identifier@63..66 "i32"
+    Whitespace@66..67 " "
+    BlockExpression@67..72
+      OpenBraces@67..68 "{"
+      Whitespace@68..69 " "
+      Literal@69..70
+        Integer@69..70 "0"
+      Whitespace@70..71 " "
+      CloseBraces@71..72 "}"

@@ -1,0 +1,1 @@
+fn foo(my_id: my_type_id) -> my_return_type_id { my_id }

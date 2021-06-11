@@ -1,0 +1,15 @@
+SourceFile@0..25
+  FunctionDefinition@0..25
+    FnKw@0..2 "fn"
+    Whitespace@2..3 " "
+    Name@3..15
+      Identifier@3..15 "missing_body"
+    ParameterList@15..17
+      OpenParenthesis@15..16 "("
+      CloseParenthesis@16..17 ")"
+    Whitespace@17..18 " "
+    Arrow@18..20 "->"
+    Whitespace@20..21 " "
+    NameReference@21..25
+      Identifier@21..25 "tipo"
+At 21..25: expected OpenBraces
