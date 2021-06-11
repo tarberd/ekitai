@@ -7,7 +7,7 @@ use rowan::GreenNode;
 use syntax_token_source::SyntaxTokenSource;
 use syntax_tree_sink::SyntaxTreeSink;
 
-pub fn parse_text(input: &str) -> (GreenNode, Vec<SyntaxError>) {
+pub fn parse(input: &str) -> (GreenNode, Vec<SyntaxError>) {
     let tokens: Vec<_> = Lexer::new(input).collect();
     let token_source = SyntaxTokenSource::new(&tokens);
     let tree_sink = SyntaxTreeSink::new(&tokens);

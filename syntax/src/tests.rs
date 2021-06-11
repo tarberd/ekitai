@@ -1,7 +1,57 @@
+use std::path::{Path, PathBuf};
+
 use super::*;
 use ::parser::{ParseError, SyntaxKind};
-use expect_test::expect;
+use expect_test::{expect, expect_file};
 use rowan::TextRange;
+
+fn project_root() -> PathBuf {
+    let dir = env!("CARGO_MANIFEST_DIR");
+    PathBuf::from(dir).to_owned()
+}
+
+fn test_data_dir() -> PathBuf {
+    project_root().join("test_data")
+}
+
+fn read_text(path: &Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|_| panic!("File at {:?} should be valid", path))
+}
+
+fn ekitai_files_in_dir(dir: &Path) -> Vec<(PathBuf, String)> {
+    let mut paths =
+        std::fs::read_dir(&dir)
+            .unwrap()
+            .into_iter()
+            .fold(Vec::new(), |mut paths, file| {
+                let file = file.unwrap();
+                let path = file.path();
+                if path.extension().unwrap_or_default() == "eki" {
+                    paths.push(path);
+                }
+                paths
+            });
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|path| {
+            let source = read_text(&path);
+            (path.clone(), source)
+        })
+        .collect()
+}
+
+#[test]
+fn build_cst_for_test_data() {
+    for (path, source) in ekitai_files_in_dir(&test_data_dir().join("ok"))
+        .iter()
+        .chain(ekitai_files_in_dir(&test_data_dir().join("err")).iter())
+    {
+        let actual = SourceFile::parse(source);
+        let path = path.with_extension("eki.cst");
+        expect_file![path].assert_eq(&actual.debug_dump());
+    }
+}
 
 fn check(input: &str, expected_tree: expect_test::Expect) {
     let parse = SourceFile::parse(input);
@@ -61,11 +111,11 @@ fn parse_function_definition_missing_type_id() {
     expected_tree.assert_eq(&parse.debug_dump());
     let errors = vec![
         SyntaxError::new(
-            ParseError::new(vec![SyntaxKind::Identifier], None),
+            ParseError::new(SyntaxKind::Identifier, None),
             TextRange::new(9.into(), 11.into()),
         ),
         SyntaxError::new(
-            ParseError::new(vec![SyntaxKind::OpenBraces], None),
+            ParseError::new(SyntaxKind::OpenBraces, None),
             TextRange::new(9.into(), 11.into()),
         ),
     ];

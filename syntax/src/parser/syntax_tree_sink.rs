@@ -2,6 +2,7 @@ use crate::cst::raw::EkitaiLanguage;
 use crate::lexer::Token;
 use parser::{ParseError, SyntaxKind, TreeSink};
 use rowan::{GreenNode, GreenNodeBuilder, Language};
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::slice::Iter;
 use text_size::TextRange;
 
@@ -14,6 +15,17 @@ pub struct SyntaxError {
 impl SyntaxError {
     pub fn new(error: ParseError, range: TextRange) -> Self {
         Self { error, range }
+    }
+}
+
+impl Display for SyntaxError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(f, "At {:?}: expected {:?}", self.range, self.error.expected).and_then(|_| {
+            self.error
+                .found
+                .map(|found| write!(f, " but founded {:?}", found))
+                .unwrap_or(Ok(()))
+        })
     }
 }
 

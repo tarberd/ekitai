@@ -35,14 +35,18 @@ impl Parse {
     }
 
     pub fn debug_dump(&self) -> String {
-        let tree = format!("{:#?}", self.syntax_node());
-        tree[..tree.len() - 1].to_string()
+        let dump = vec![format!("{:#?}", self.syntax_node()).trim_end().to_owned()];
+        let dump = self.errors.iter().fold(dump, |mut dump, error| {
+            dump.push(format!("{}", error));
+            dump
+        });
+        dump.join("\n")
     }
 }
 
 impl SourceFile {
     pub fn parse(input: &str) -> Parse {
-        let (node, errors) = parser::parse_text(input);
+        let (node, errors) = parser::parse(input);
         Parse::new(node, errors)
     }
 }

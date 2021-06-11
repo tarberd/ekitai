@@ -49,7 +49,7 @@ fn parse_function_parameters<S: TokenSource>(p: &mut Parser<S>) {
         m.complete(p, ParameterList);
     } else {
         p.error_and_recover(
-            ParseError::new(vec![OpenParenthesis], p.current()),
+            ParseError::new(OpenParenthesis, p.current()),
             ITEM_RECOVERY_SET,
         );
     }
@@ -70,7 +70,7 @@ fn parse_name<S: TokenSource>(p: &mut Parser<S>) {
         m.complete(p, Name);
     } else {
         p.error_and_recover(
-            ParseError::new(vec![Identifier], p.current()),
+            ParseError::new(Identifier, p.current()),
             ITEM_RECOVERY_SET,
         );
     }
@@ -82,7 +82,7 @@ fn parse_name_reference<S: TokenSource>(p: &mut Parser<S>) {
         p.bump();
         m.complete(p, NameReference);
     } else {
-        p.error(ParseError::new(vec![Identifier], p.current()));
+        p.error(ParseError::new(Identifier, p.current()));
     }
 }
 
@@ -94,7 +94,7 @@ fn parse_block_expression<S: TokenSource>(p: &mut Parser<S>) {
         p.expect(CloseBraces);
         m.complete(p, BlockExpression);
     } else {
-        p.error(ParseError::new(vec![OpenBraces], p.current()));
+        p.error(ParseError::new(OpenBraces, p.current()));
     }
 }
 
@@ -186,7 +186,19 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
         parenthesis_expression(p)
     } else {
         p.error(ParseError::new(
-            vec![Integer, Identifier, Minus, OpenParenthesis],
+            Integer,
+            p.current(),
+        ));
+        p.error(ParseError::new(
+            Identifier,
+            p.current(),
+        ));
+        p.error(ParseError::new(
+            Minus,
+            p.current(),
+        ));
+        p.error(ParseError::new(
+            OpenParenthesis,
             p.current(),
         ));
         return None;

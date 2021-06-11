@@ -59,7 +59,7 @@ impl<Source: TokenSource> Parser<Source> {
             self.bump();
             true
         } else {
-            self.error(ParseError::new(vec![kind], self.current()));
+            self.error(ParseError::new(kind, self.current()));
             false
         }
     }
