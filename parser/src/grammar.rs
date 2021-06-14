@@ -127,7 +127,7 @@ impl InfixOp {
     }
 }
 
-fn expression<S: TokenSource>(p: &mut Parser<S>) {
+pub fn expression<S: TokenSource>(p: &mut Parser<S>) {
     expression_binding_power(p, 0);
 }
 

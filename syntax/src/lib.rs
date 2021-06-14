@@ -7,27 +7,32 @@ mod tests;
 
 use crate::parser::SyntaxError;
 use cst::raw::SyntaxNode;
-use cst::SourceFile;
+use cst::{SourceFile, Expression};
 use rowan::GreenNode;
-use std::convert::TryFrom;
+use std::marker::PhantomData;
 
 #[derive(Debug)]
-pub struct Parse {
+pub struct Parse<T: cst::CstNode> {
     green_node: GreenNode,
     errors: Vec<SyntaxError>,
+    _cst_type: PhantomData<T>,
 }
 
-impl Parse {
+impl<T: cst::CstNode> Parse<T> {
     fn new(green_node: GreenNode, errors: Vec<SyntaxError>) -> Self {
-        Self { green_node, errors }
+        Self {
+            green_node,
+            errors,
+            _cst_type: PhantomData,
+        }
     }
 
     fn syntax_node(&self) -> SyntaxNode {
         SyntaxNode::new_root(self.green_node.clone())
     }
 
-    pub fn ast_node(&self) -> SourceFile {
-        SourceFile::try_from(self.syntax_node()).ok().unwrap()
+    pub fn ast_node(&self) -> T {
+        T::try_from(self.syntax_node()).ok().unwrap()
     }
 
     pub fn errors(&self) -> &Vec<SyntaxError> {
@@ -45,8 +50,15 @@ impl Parse {
 }
 
 impl SourceFile {
-    pub fn parse(input: &str) -> Parse {
+    pub fn parse(input: &str) -> Parse<Self> {
         let (node, errors) = parser::parse(input);
+        Parse::new(node, errors)
+    }
+}
+
+impl Expression {
+    pub fn parse(input: &str) -> Parse<Self> {
+        let (node, errors) = parser::parse_expression(input);
         Parse::new(node, errors)
     }
 }

@@ -1,4 +1,4 @@
-mod grammar;
+pub mod grammar;
 mod parser;
 mod syntax_kind;
 
@@ -38,7 +38,7 @@ where
     parse_grammar(token_source, tree_sink, grammar::parse_root)
 }
 
-fn parse_grammar<Source, Sink, F>(token_source: Source, tree_sink: Sink, f: F) -> Sink
+pub fn parse_grammar<Source, Sink, F>(token_source: Source, tree_sink: Sink, f: F) -> Sink
 where
     Source: TokenSource,
     Sink: TreeSink,

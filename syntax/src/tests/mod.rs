@@ -4,6 +4,7 @@ use super::*;
 use expect_test::{expect, expect_file, Expect};
 
 mod empty;
+mod expressions;
 mod function_parameters;
 
 fn crate_root() -> PathBuf {
