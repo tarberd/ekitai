@@ -69,10 +69,7 @@ fn parse_name<S: TokenSource>(p: &mut Parser<S>) {
         p.bump();
         m.complete(p, Name);
     } else {
-        p.error_and_recover(
-            ParseError::new(Identifier, p.current()),
-            ITEM_RECOVERY_SET,
-        );
+        p.error_and_recover(ParseError::new(Identifier, p.current()), ITEM_RECOVERY_SET);
     }
 }
 
@@ -176,7 +173,7 @@ fn expression_binding_power<S: TokenSource>(
 }
 
 fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
-    let cm = if p.at(Integer) {
+    let lhs = if p.at(Integer) {
         literal(p)
     } else if p.at(Identifier) {
         name_reference(p)
@@ -185,26 +182,47 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
     } else if p.at(OpenParenthesis) {
         parenthesis_expression(p)
     } else {
-        p.error(ParseError::new(
-            Integer,
-            p.current(),
-        ));
-        p.error(ParseError::new(
-            Identifier,
-            p.current(),
-        ));
-        p.error(ParseError::new(
-            Minus,
-            p.current(),
-        ));
-        p.error(ParseError::new(
-            OpenParenthesis,
-            p.current(),
-        ));
+        p.error(ParseError::new(Integer, p.current()));
+        p.error(ParseError::new(Identifier, p.current()));
+        p.error(ParseError::new(Minus, p.current()));
+        p.error(ParseError::new(OpenParenthesis, p.current()));
         return None;
     };
 
-    Some(cm)
+    Some(postfix_expression(p, lhs))
+}
+
+fn postfix_expression<S: TokenSource>(p: &mut Parser<S>, lhs: CompletedMarker) -> CompletedMarker {
+    match p.current() {
+        Some(kind) => match kind {
+            OpenParenthesis => call_expr(p, lhs),
+            _ => lhs,
+        },
+        None => lhs,
+    }
+}
+
+fn call_expr<S: TokenSource>(p: &mut Parser<S>, lhs: CompletedMarker) -> CompletedMarker {
+    assert!(p.at(OpenParenthesis));
+    let m = lhs.precede(p);
+
+    argument_list(p);
+
+    m.complete(p, CallExpression)
+}
+
+fn argument_list<S:TokenSource>(p: &mut Parser<S>) {
+    assert!(p.at(OpenParenthesis));
+    let m = p.start();
+    p.bump();
+    if p.at(CloseParenthesis) {
+        p.bump();
+    }
+    else {
+        p.error(ParseError::new(CloseParenthesis, None))
+
+    }
+    m.complete(p, ArgumentList);
 }
 
 fn literal<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {

@@ -37,6 +37,8 @@ pub enum SyntaxKind {
     PrefixExpression,
     InfixExpression,
     ParenthesisExpression,
+    CallExpression,
+    ArgumentList,
 
     Error,
     Placeholder,
