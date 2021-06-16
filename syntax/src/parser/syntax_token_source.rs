@@ -8,7 +8,9 @@ pub(crate) struct SyntaxTokenSource<'t, 'i> {
 
 impl<'t, 'i> SyntaxTokenSource<'t, 'i> {
     pub fn new(tokens: &'t [Token<'i>]) -> Self {
-        Self { tokens: tokens.iter() }
+        Self {
+            tokens: tokens.iter(),
+        }
     }
 
     fn eat_trivia(&mut self) {

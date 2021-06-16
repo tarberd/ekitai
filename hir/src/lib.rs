@@ -68,14 +68,17 @@ impl Function {
             }
         };
 
-        let parameter_types = parameters.iter().map(|Parameter{ty, ..}| ty.clone()).collect();
+        let parameter_types = parameters
+            .iter()
+            .map(|Parameter { ty, .. }| ty.clone())
+            .collect();
         let (block, diagnostics) = BlockExpression::lower(f.body().unwrap(), diagnostics);
         let fun = match f.name() {
             Some(name) => Some(Self {
                 name: name.identifier().text().into(),
                 parameter_types,
                 return_type: "i32".into(),
-                body: Body{ parameters , block},
+                body: Body { parameters, block },
             }),
             None => None,
         };
@@ -175,6 +178,7 @@ impl Expression {
                     .unwrap_or_else(|| todo!("todo missing inner nested expression")),
                 diagnostics,
             ),
+            cst::Expression::CallExpression(_call) => todo!(),
         }
     }
 }

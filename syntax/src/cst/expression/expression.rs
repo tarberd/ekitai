@@ -1,6 +1,7 @@
 use super::{
     super::{raw::SyntaxNode, CstNode, NameReference, SyntaxToAstError},
-    BlockExpression, InfixExpression, Literal, ParenthesisExpression, PrefixExpression,
+    BlockExpression, CallExpression, InfixExpression, Literal, ParenthesisExpression,
+    PrefixExpression,
 };
 use parser::SyntaxKind;
 
@@ -12,6 +13,7 @@ pub enum Expression {
     InfixExpression(InfixExpression),
     PrefixExpression(PrefixExpression),
     ParenthesisExpression(ParenthesisExpression),
+    CallExpression(CallExpression),
 }
 
 impl Expression {
@@ -23,6 +25,7 @@ impl Expression {
             SyntaxKind::InfixExpression,
             SyntaxKind::PrefixExpression,
             SyntaxKind::ParenthesisExpression,
+            SyntaxKind::CallExpression,
         ];
         &KINDS
     }
@@ -37,6 +40,7 @@ impl Expression {
             SyntaxKind::ParenthesisExpression => {
                 Self::ParenthesisExpression(ParenthesisExpression(raw))
             }
+            SyntaxKind::CallExpression => Self::CallExpression(CallExpression(raw)),
             _ => panic!(),
         }
     }
@@ -51,6 +55,7 @@ impl CstNode for Expression {
             Expression::InfixExpression(e) => e.as_syntax_node(),
             Expression::PrefixExpression(e) => e.as_syntax_node(),
             Expression::ParenthesisExpression(e) => e.as_syntax_node(),
+            Expression::CallExpression(e) => e.as_syntax_node(),
         }
     }
 }

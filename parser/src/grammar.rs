@@ -215,6 +215,14 @@ fn argument_list<S:TokenSource>(p: &mut Parser<S>) {
     assert!(p.at(OpenParenthesis));
     let m = p.start();
     p.bump();
+
+    while !p.at(CloseParenthesis) && p.current() != None {
+        expression(p);
+        if p.at(Comma) {
+            p.bump();
+        }
+    }
+
     if p.at(CloseParenthesis) {
         p.bump();
     }
