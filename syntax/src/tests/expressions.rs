@@ -184,6 +184,22 @@ fn function_call() {
             OpenParenthesis@3..4 "("
             CloseParenthesis@4..5 ")""#]],
     );
+    check_str("(foo + a)()", expect![[r#"
+        CallExpression@0..11
+          ParenthesisExpression@0..9
+            OpenParenthesis@0..1 "("
+            InfixExpression@1..8
+              NameReference@1..4
+                Identifier@1..4 "foo"
+              Whitespace@4..5 " "
+              Plus@5..6 "+"
+              Whitespace@6..7 " "
+              NameReference@7..8
+                Identifier@7..8 "a"
+            CloseParenthesis@8..9 ")"
+          ArgumentList@9..11
+            OpenParenthesis@9..10 "("
+            CloseParenthesis@10..11 ")""#]])
 }
 
 #[test]

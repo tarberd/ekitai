@@ -8,6 +8,8 @@ pub fn build_assembly_ir(module: &Module) {
     let llvm_module = context.create_module("ekitai_module");
     let builder = context.create_builder();
 
+    let mut values = Vec::new();
+
     for function in &module.functions {
         let param_types = function
             .parameter_types
@@ -19,7 +21,21 @@ pub fn build_assembly_ir(module: &Module) {
             .collect::<Vec<_>>();
         let fn_type = context.i32_type().fn_type(&param_types, false);
         let llfunction = llvm_module.add_function(&function.name, fn_type, None);
-        let body = context.append_basic_block(llfunction, "");
+
+        values.push((
+            function.name.clone(),
+            llfunction,
+        ));
+    }
+
+    for function in &module.functions {
+        let llfunction = values
+            .iter()
+            .find(|(name, _llfunction)| *name == *function.name)
+            .map(|(_, llfunction)| llfunction)
+            .unwrap();
+
+        let body = context.append_basic_block(*llfunction, "");
         builder.position_at_end(body);
 
         let parameter_values = function
@@ -109,6 +125,23 @@ fn build_expression<'context>(
             } else {
                 todo!("missing id {}", name)
             }
+        }
+        Expression::Call(call) => {
+            let _callee = build_expression(context, builder, &call.callee, &values);
+            let _arguments = call
+                .arguments
+                .iter()
+                .fold(Vec::new(), |mut arguments, argument| {
+                    let argument = build_expression(context, builder, argument, values);
+                    arguments.push(argument);
+                    arguments
+                });
+            // builder
+            //     .build_call(callee, arguments.as_slice(), "")
+            //     .try_as_basic_value()
+            //     .left()
+            //     .unwrap()
+            todo!()
         }
     }
 }

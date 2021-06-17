@@ -18,7 +18,7 @@ impl ArgumentList {
         SyntaxKind::ArgumentList
     }
 
-    pub fn argumentss(&self) -> impl Iterator<Item = Expression> {
+    pub fn arguments(&self) -> impl Iterator<Item = Expression> {
         use std::convert::TryFrom;
         let mut children = self.as_syntax_node().children();
         std::iter::from_fn(move || children.by_ref().find_map(|n| Expression::try_from(n).ok()))

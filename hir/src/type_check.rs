@@ -76,6 +76,7 @@ pub fn type_check_expression(
                 IntegerKind::Unsuffixed => (Some(Type::Unknown), errors)
             },
         },
+        Expression::Call(..) => (Some(Type::I32), errors),
     }
 }
 

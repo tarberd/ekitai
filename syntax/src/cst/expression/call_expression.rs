@@ -1,7 +1,6 @@
-use crate::cst::NameReference;
 use super::{
     super::{raw::SyntaxNode, CstNode, SyntaxToAstError},
-    ArgumentList,
+    ArgumentList, Expression,
 };
 use parser::SyntaxKind;
 
@@ -19,11 +18,11 @@ impl CallExpression {
         SyntaxKind::CallExpression
     }
 
-    pub fn name_reference(&self) -> Option<NameReference> {
+    pub fn callee(&self) -> Option<Expression> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .find_map(|s| NameReference::try_from(s).ok())
+            .find_map(|s| Expression::try_from(s).ok())
     }
 
     pub fn argument_list(&self) -> Option<ArgumentList> {

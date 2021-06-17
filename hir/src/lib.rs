@@ -107,6 +107,7 @@ pub enum Expression {
     UnaryExpression(Box<Expression>, UnaryOperator),
     Literal(Literal),
     NameReference(SmolStr),
+    Call(Box<Call>),
 }
 
 impl Expression {
@@ -178,7 +179,37 @@ impl Expression {
                     .unwrap_or_else(|| todo!("todo missing inner nested expression")),
                 diagnostics,
             ),
-            cst::Expression::CallExpression(_call) => todo!(),
+            cst::Expression::CallExpression(call) => {
+                let (call, diagnostics) = Call::lower(call, diagnostics);
+                (Self::Call(Box::new(call)), diagnostics)
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Call {
+    pub callee: Expression,
+    pub arguments: Vec<Expression>,
+}
+
+impl Call {
+    fn lower(call: cst::CallExpression, diagnostics: Vec<LowerError>) -> (Self, Vec<LowerError>) {
+        if let (Some(callee), Some(arguments)) = (call.callee(), call.argument_list()) {
+            let (callee, diagnostics) = Expression::lower(callee, diagnostics);
+
+            let (arguments, diagnostics) = arguments.arguments().fold(
+                (Vec::new(), diagnostics),
+                |(mut arguments, diagnostics), argument| {
+                    let (argument, diagnostics) = Expression::lower(argument, diagnostics);
+                    arguments.push(argument);
+                    (arguments, diagnostics)
+                },
+            );
+
+            (Self { callee, arguments }, diagnostics)
+        } else {
+            panic!("call expression must have callee and arguments");
         }
     }
 }

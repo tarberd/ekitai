@@ -2,18 +2,18 @@ mod expression;
 mod function;
 mod name;
 mod name_ref;
+mod parameter;
+mod parameter_list;
 pub mod raw;
 mod source_file;
 mod token;
-mod parameter_list;
-mod parameter;
 
-pub use expression::{BlockExpression, Expression, InfixExpression, Literal};
+pub use expression::{BlockExpression, CallExpression, Expression, InfixExpression, Literal};
 pub use function::Function;
 pub use name::Name;
-pub use parameter_list::ParameterList;
-pub use parameter::Parameter;
 pub use name_ref::NameReference;
+pub use parameter::Parameter;
+pub use parameter_list::ParameterList;
 pub use source_file::SourceFile;
 pub use token::{
     Asterisk, BinaryOperator, Identifier, Integer, LiteralKind, Minus, Percent, Plus, Slash,
