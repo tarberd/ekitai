@@ -22,10 +22,7 @@ pub fn build_assembly_ir(module: &Module) {
         let fn_type = context.i32_type().fn_type(&param_types, false);
         let llfunction = llvm_module.add_function(&function.name, fn_type, None);
 
-        values.push((
-            function.name.clone(),
-            llfunction,
-        ));
+        values.push((function.name.clone(), llfunction));
     }
 
     for function in &module.functions {
@@ -55,8 +52,13 @@ pub fn build_assembly_ir(module: &Module) {
             })
             .collect();
 
-        let value =
-            build_block_expression(&context, &builder, &function.body.block, &parameter_values);
+        let value = build_block_expression(
+            &context,
+            &builder,
+            &function.body.block,
+            &values,
+            &parameter_values,
+        );
 
         builder.build_return(Some(&value));
     }
@@ -72,24 +74,34 @@ fn build_block_expression<'context>(
     context: &'context Context,
     builder: &'context Builder,
     body: &BlockExpression,
-    values: &'context Vec<(SmolStr, inkwell::values::BasicValueEnum)>,
+    functions: &'context Vec<(SmolStr, inkwell::values::FunctionValue)>,
+    arguments: &'context Vec<(SmolStr, inkwell::values::BasicValueEnum)>,
 ) -> inkwell::values::BasicValueEnum<'context> {
-    build_expression(context, builder, &body.tail_expression, &values)
+    build_expression(
+        context,
+        builder,
+        &body.tail_expression,
+        functions,
+        arguments,
+    )
 }
 
 fn build_expression<'context>(
     context: &'context Context,
     builder: &'context Builder,
     expression: &Expression,
-    values: &'context Vec<(SmolStr, inkwell::values::BasicValueEnum)>,
+    functions: &'context Vec<(SmolStr, inkwell::values::FunctionValue)>,
+    arguments: &'context Vec<(SmolStr, inkwell::values::BasicValueEnum)>,
 ) -> inkwell::values::BasicValueEnum<'context> {
     match expression {
         Expression::BlockExpression(block) => {
-            build_block_expression(context, builder, block, &values)
+            build_block_expression(context, builder, block, functions, arguments)
         }
         Expression::BinaryExpression(lhs, op, rhs) => {
-            let l_value = build_expression(context, builder, lhs, &values).into_int_value();
-            let r_value = build_expression(context, builder, rhs, &values).into_int_value();
+            let l_value =
+                build_expression(context, builder, lhs, functions, arguments).into_int_value();
+            let r_value =
+                build_expression(context, builder, rhs, functions, arguments).into_int_value();
             match op {
                 BinaryOperator::Add => builder
                     .build_int_add::<inkwell::values::IntValue>(l_value, r_value, "")
@@ -109,7 +121,8 @@ fn build_expression<'context>(
             }
         }
         Expression::UnaryExpression(inner, op) => {
-            let inner_value = build_expression(context, builder, inner, &values).into_int_value();
+            let inner_value =
+                build_expression(context, builder, inner, functions, arguments).into_int_value();
             match op {
                 hir::UnaryOperator::Minus => builder.build_int_neg(inner_value, "").into(),
             }
@@ -120,28 +133,61 @@ fn build_expression<'context>(
             }
         },
         Expression::NameReference(name) => {
-            if let Some((_, value)) = values.iter().find(|(name_to_find, _)| name == name_to_find) {
+            if let Some((_, value)) = arguments
+                .iter()
+                .find(|(name_to_find, _)| name == name_to_find)
+            {
                 builder.build_load(value.into_pointer_value(), "")
             } else {
                 todo!("missing id {}", name)
             }
         }
         Expression::Call(call) => {
-            let _callee = build_expression(context, builder, &call.callee, &values);
-            let _arguments = call
-                .arguments
-                .iter()
-                .fold(Vec::new(), |mut arguments, argument| {
-                    let argument = build_expression(context, builder, argument, values);
-                    arguments.push(argument);
-                    arguments
-                });
-            // builder
-            //     .build_call(callee, arguments.as_slice(), "")
-            //     .try_as_basic_value()
-            //     .left()
-            //     .unwrap()
-            todo!()
+            let callee =
+                infer_callee_expression(context, builder, &call.callee, functions, arguments);
+            let arguments =
+                call.arguments
+                    .iter()
+                    .fold(Vec::new(), |mut call_arguments, argument| {
+                        let argument =
+                            build_expression(context, builder, argument, functions, arguments);
+                        call_arguments.push(argument);
+                        call_arguments
+                    });
+            builder
+                .build_call(callee, arguments.as_slice(), "")
+                .try_as_basic_value()
+                .left()
+                .unwrap()
         }
+    }
+}
+
+fn infer_callee_expression<'context>(
+    context: &'context Context,
+    builder: &'context Builder,
+    expression: &Expression,
+    functions: &'context Vec<(SmolStr, inkwell::values::FunctionValue)>,
+    arguments: &'context Vec<(SmolStr, inkwell::values::BasicValueEnum)>,
+) -> inkwell::values::FunctionValue<'context> {
+    match expression {
+        Expression::BlockExpression(block) => infer_callee_expression(
+            context,
+            builder,
+            &block.tail_expression,
+            functions,
+            arguments,
+        ),
+        Expression::NameReference(name) => {
+            if let Some(function) = functions.iter().find(|(n, _)| name == n).map(|(_, f)| f) {
+                function.clone()
+            } else {
+                panic!("Expected function")
+            }
+        }
+        x => unimplemented!(
+            "Callee expression of the type variant {:?} is not suported",
+            x
+        ),
     }
 }
