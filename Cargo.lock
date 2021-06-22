@@ -107,6 +107,7 @@ checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
 name = "hir"
 version = "0.1.0"
 dependencies = [
+ "la-arena",
  "smol_str",
  "syntax",
 ]
@@ -143,6 +144,12 @@ checksum = "61124eeebbd69b8190558df225adf7e4caafce0d743919e5d6b19652314ec5ec"
 dependencies = [
  "cfg-if",
 ]
+
+[[package]]
+name = "la-arena"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ac64f89246d9a501a6e713cec4cfd64757a4ae24c20520c8cfe643007338ecf"
 
 [[package]]
 name = "lazy_static"

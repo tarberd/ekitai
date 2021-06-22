@@ -8,7 +8,7 @@ pub mod raw;
 mod source_file;
 mod token;
 
-pub use expression::{BlockExpression, CallExpression, Expression, InfixExpression, Literal};
+pub use expression::{BlockExpression, CallExpression, Expression, InfixExpression, PrefixExpression, Literal};
 pub use function::Function;
 pub use name::Name;
 pub use name_ref::NameReference;
