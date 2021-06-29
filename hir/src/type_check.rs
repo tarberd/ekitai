@@ -1,4 +1,6 @@
-use super::{BlockExpression, Body, Expression, Function, IntegerKind, Literal, Module};
+use crate::{Body, Expression, Function, Module, Name, TypeReference};
+
+use la_arena::{ArenaMap, Idx};
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
@@ -9,90 +11,67 @@ pub enum TypeError {
 #[derive(Debug, PartialEq)]
 pub enum Type {
     I32,
+    I64,
+    Function(Vec<Type>, Box<Type>),
     Unknown,
 }
 
-pub fn type_check_module(module: &Module) -> Vec<TypeError> {
-    let result = module
-        .functions
-        .iter()
-        .fold(Vec::new(), |errors, function| {
-            type_check_function(function, errors)
-        });
-    result
-}
-
-pub fn type_check_function(func: &Function, errors: Vec<TypeError>) -> Vec<TypeError> {
-    let (_ty, errors) = type_check_body(&func.body, errors);
-    errors
-}
-
-pub fn type_check_body(body: &Body, errors: Vec<TypeError>) -> (Option<Type>, Vec<TypeError>) {
-    type_check_block(&body.block, errors)
-}
-
-pub fn type_check_block(
-    block: &BlockExpression,
-    errors: Vec<TypeError>,
-) -> (Option<Type>, Vec<TypeError>) {
-    type_check_expression(&block.tail_expression, errors)
-}
-
-pub fn type_check_expression(
-    expr: &Expression,
-    errors: Vec<TypeError>,
-) -> (Option<Type>, Vec<TypeError>) {
-    match expr {
-        Expression::BlockExpression(e) => type_check_block(e, errors),
-        Expression::BinaryExpression(lhs, _, rhs) => {
-            let (left_type, errors) = type_check_expression(lhs, errors);
-            let (right_type, mut errors) = type_check_expression(rhs, errors);
-            match (left_type, right_type) {
-                (Some(Type::Unknown), Some(r)) => {
-                        (Some(r), errors)
-                }
-                (Some(l), Some(Type::Unknown)) => {
-                        (Some(l), errors)
-                }
-                (Some(l), Some(r)) => {
-                    if l == r {
-                        (Some(l), errors)
-                    } else {
-                        errors.push(TypeError::TypeMismatch {
-                            expected: l,
-                            actual: r,
-                        });
-                        (None, errors)
-                    }
-                }
-                _ => (None, errors),
-            }
+impl Type {
+    fn from(type_reference: &TypeReference) -> Self {
+        let TypeReference { id } = type_reference;
+        match id.as_str() {
+            "i32" => Type::I32,
+            "i64" => Type::I64,
+            _ => Type::Unknown,
         }
-        Expression::NameReference(..) => (Some(Type::I32), errors),
-        Expression::UnaryExpression(inner, _) => type_check_expression(inner, errors),
-        Expression::Literal(literal) => match literal {
-            Literal::Integer(_, kind) => match kind {
-                IntegerKind::I32 => (Some(Type::I32), errors),
-                IntegerKind::Unsuffixed => (Some(Type::Unknown), errors)
-            },
-        },
-        Expression::Call(..) => (Some(Type::I32), errors),
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[test]
-    fn typecheck() {
-        let src = "fn foo() -> i32 { 5_i32 + 5_i32 }";
-        let parse = syntax::cst::SourceFile::parse(&src);
-        let (module, errors) = Module::lower(parse.ast_node());
-        // println!("{:#?}", module);
-        assert_eq!(errors, vec![]);
+pub struct ModuleTypeMap {
+    pub function_to_type: ArenaMap<Idx<Function>, Type>,
+}
 
-        let type_errors = type_check_module(&module);
+impl ModuleTypeMap {
+    pub fn new(module: &Module) -> Self {
+        let function_to_type = module.functions.iter().fold(
+            ArenaMap::default(),
+            |mut function_to_type, (fid, function)| {
+                let parameter_types = function.parameter_types.iter().fold(
+                    Vec::new(),
+                    |mut parameter_types, type_reference| {
+                        parameter_types.push(Type::from(type_reference));
+                        parameter_types
+                    },
+                );
+                let return_type = Type::from(&function.return_type);
+                function_to_type
+                    .insert(fid, Type::Function(parameter_types, Box::new(return_type)));
+                function_to_type
+            },
+        );
+        Self { function_to_type }
+    }
+}
 
-        assert_eq!(type_errors, vec![]);
+pub struct BodyTypeMap {
+    type_of_expression: ArenaMap<Idx<Expression>, Type>,
+    type_of_name: ArenaMap<Idx<Name>, Type>,
+}
+
+impl BodyTypeMap {
+    fn new(body: &Body) -> Self {
+        let type_of_name =
+            body.bindings
+                .iter()
+                .fold(ArenaMap::default(), |mut type_of_name, (name, typeref)| {
+                    let ref typeref = body.types[*typeref];
+                    let ty = Type::from(typeref);
+                    type_of_name.insert(name, ty);
+                    type_of_name
+                });
+        Self {
+            type_of_expression: ArenaMap::default(),
+            type_of_name,
+        }
     }
 }

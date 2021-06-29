@@ -1,4 +1,6 @@
-use super::{raw::SyntaxNode, BlockExpression, CstNode, Name, ParameterList, SyntaxToAstError};
+use super::{
+    raw::SyntaxNode, BlockExpression, CstNode, Name, NameReference, ParameterList, SyntaxToAstError,
+};
 use parser::SyntaxKind;
 use std::{convert::TryFrom, fmt::Display};
 
@@ -26,6 +28,12 @@ impl Function {
         self.as_syntax_node()
             .children()
             .find_map(|n| ParameterList::try_from(n).ok())
+    }
+
+    pub fn return_type(&self) -> Option<NameReference> {
+        self.as_syntax_node()
+            .children()
+            .find_map(|n| NameReference::try_from(n).ok())
     }
 
     pub fn body(&self) -> Option<BlockExpression> {

@@ -23,13 +23,13 @@ fn drive(source: String) {
     println!("{}", parse.debug_dump());
     println!("Syntax Errors: {:#?}", parse.errors());
 
-    let (module, errors) = hir::Module::lower(parse.ast_node());
+    let module = hir::Module::lower(parse.ast_node());
     println!("{:#?}", module);
-    println!("Lower Errors: {:#?}", errors);
+    // println!("Lower Errors: {:#?}", errors);
 
-    let errors = hir::type_check::type_check_module(&module);
+    // let errors = hir::type_check::type_check_module(&module);
 
-    println!("Type Errors: {:#?}", errors);
+    // println!("Type Errors: {:#?}", errors);
 
     codegen::build_assembly_ir(&module);
 }
