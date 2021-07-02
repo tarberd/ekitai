@@ -28,6 +28,8 @@ impl Module {
     }
 }
 
+pub type FunctionId = Idx<Function>;
+
 #[derive(Debug)]
 pub struct Function {
     pub name: Name,
@@ -91,8 +93,15 @@ impl Function {
     }
 }
 
+pub type NameId = Idx<Name>;
+
 #[derive(Debug, Clone)]
 pub struct Name {
+    pub id: SmolStr,
+}
+
+#[derive(Debug, Clone)]
+pub struct NameReference {
     pub id: SmolStr,
 }
 
@@ -105,27 +114,27 @@ pub struct TypeReference {
 pub struct Body {
     pub names: Arena<Name>,
     pub types: Arena<TypeReference>,
-    pub bindings: ArenaMap<Idx<Name>, Idx<TypeReference>>,
+    pub parameters: ArenaMap<Idx<Name>, Idx<TypeReference>>,
     pub expressions: Arena<Expression>,
     pub block: Idx<Expression>,
 }
 
 impl Body {
     pub fn new(parameters: Vec<(Name, TypeReference)>, block: cst::BlockExpression) -> Self {
-        let (names, types, bindings) = parameters.into_iter().fold(
+        let (names, types, parameters) = parameters.into_iter().fold(
             (Arena::new(), Arena::new(), ArenaMap::default()),
-            |(mut names, mut types, mut bindings), (name, typeref)| {
+            |(mut names, mut types, mut parameters), (name, typeref)| {
                 let name_id = names.alloc(name);
                 let type_id = types.alloc(typeref);
-                bindings.insert(name_id, type_id);
-                (names, types, bindings)
+                parameters.insert(name_id, type_id);
+                (names, types, parameters)
             },
         );
         let (expressions, block) = Self::collect_block_expression(Arena::new(), block);
         Self {
             names,
             types,
-            bindings,
+            parameters,
             expressions,
             block,
         }
@@ -164,7 +173,9 @@ impl Body {
                 (expressions, id)
             }
             cst::Expression::NameReference(name_ref) => {
-                let name_ref = Expression::NameReference(name_ref.identifier().text().into());
+                let name_ref = Expression::NameReference(NameReference {
+                    id: name_ref.identifier().text().into(),
+                });
                 let id = expressions.alloc(name_ref);
                 (expressions, id)
             }
@@ -288,7 +299,7 @@ pub enum Expression {
     BinaryExpression(BinaryOperator, ExpressionId, ExpressionId),
     UnaryExpression(UnaryOperator, ExpressionId),
     Literal(Literal),
-    NameReference(SmolStr),
+    NameReference(NameReference),
     Call(Call),
 }
 
@@ -316,6 +327,7 @@ impl Literal {
 
                 let kind = match suffix {
                     Some("i32") => IntegerKind::I32,
+                    Some("i64") => IntegerKind::I64,
                     Some(invalid_suffix) => {
                         diagnostics.push(LowerError::InvalidIntegerSuffix(invalid_suffix.into()));
                         IntegerKind::Unsuffixed
@@ -333,6 +345,7 @@ impl Literal {
                     Some(value) => match kind {
                         IntegerKind::Unsuffixed => value,
                         IntegerKind::I32 => value,
+                        IntegerKind::I64 => value,
                     },
                     None => {
                         // larger than u128
@@ -353,4 +366,5 @@ impl Literal {
 pub enum IntegerKind {
     Unsuffixed,
     I32,
+    I64,
 }

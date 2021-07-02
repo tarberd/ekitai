@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
-use hir::type_check::{ModuleTypeMap, Type};
-use hir::{BinaryOperator, BlockExpression, Expression, Literal, Module};
+use hir::type_check::{BodyTypeMap, ModuleTypeMap, Type};
+use hir::{
+    BinaryOperator, BlockExpression, Body, Expression, ExpressionId, FunctionId, Literal, Module,
+    NameId,
+};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::types::{BasicType, BasicTypeEnum, FunctionType};
-use smol_str::SmolStr;
+use inkwell::values::{BasicValueEnum, FunctionValue};
 
 fn inkwell_basic_type<'ink>(context: &'ink Context, ty: &Type) -> BasicTypeEnum<'ink> {
     match ty {
@@ -35,11 +38,9 @@ fn inkwell_generate_function_type<'ink>(context: &'ink Context, ty: &Type) -> Fu
 pub fn build_assembly_ir(module: &Module) {
     let context = Context::create();
     let llvm_module = context.create_module("ekitai_module");
-    // let builder = context.create_builder();
+    let builder = context.create_builder();
 
     let module_type_map = ModuleTypeMap::new(module);
-
-    // let mut values = Vec::new();
 
     let function_map =
         module
@@ -53,43 +54,38 @@ pub fn build_assembly_ir(module: &Module) {
                 function_map
             });
 
-    // for function in &module.functions {
-    //     let llfunction = values
-    //         .iter()
-    //         .find(|(name, _llfunction)| *name == *function.name)
-    //         .map(|(_, llfunction)| llfunction)
-    //         .unwrap();
+    for (fid, function) in module.functions.iter() {
+        let llfunction = function_map[&fid];
+        let llbody = context.append_basic_block(llfunction, "");
+        builder.position_at_end(llbody);
 
-    //     let body = context.append_basic_block(*llfunction, "");
-    //     builder.position_at_end(body);
+        let body = &function.body;
 
-    //     let parameter_values = function
-    //         .body
-    //         .parameters
-    //         .iter()
-    //         .zip(llfunction.get_params())
-    //         .map(|(param, llvalue)| {
-    //             let alloca = builder.build_alloca(llvalue.get_type(), "");
-    //             (param.name.clone(), alloca, llvalue)
-    //         })
-    //         .collect::<Vec<_>>()
-    //         .into_iter()
-    //         .map(|(name, alloca, llvalue)| {
-    //             builder.build_store(alloca, llvalue);
-    //             (name, alloca.into())
-    //         })
-    //         .collect();
+        let mut name_map = HashMap::new();
 
-    //     let value = build_block_expression(
-    //         &context,
-    //         &builder,
-    //         &function.body.block,
-    //         &values,
-    //         &parameter_values,
-    //     );
+        for (func_param_pos, (name_id, _)) in body.parameters.iter().enumerate() {
+            let llfunction = function_map[&fid];
+            let param = llfunction.get_nth_param(func_param_pos as u32).unwrap();
+            let alloc = builder.build_alloca(param.get_type(), "");
+            name_map.insert(name_id, alloc.into());
+            builder.build_store(alloc, param);
+        }
 
-    //     builder.build_return(Some(&value));
-    // }
+        let body_type_map = BodyTypeMap::new(module, &module_type_map, body);
+
+        let return_value = build_expression(
+            &context,
+            &builder,
+            &function_map,
+            &name_map,
+            module,
+            body,
+            &body_type_map,
+            body.block,
+        );
+
+        builder.build_return(Some(&return_value));
+    }
 
     println!("{}", llvm_module.print_to_string().to_string());
     match llvm_module.print_to_file("out.ll") {
@@ -98,124 +94,165 @@ pub fn build_assembly_ir(module: &Module) {
     }
 }
 
-// fn build_block_expression<'context>(
-//     context: &'context Context,
-//     builder: &'context Builder,
-//     body: &BlockExpression,
-//     functions: &'context Vec<(SmolStr, inkwell::values::FunctionValue)>,
-//     arguments: &'context Vec<(SmolStr, inkwell::values::BasicValueEnum)>,
-// ) -> inkwell::values::BasicValueEnum<'context> {
-//     build_expression(
-//         context,
-//         builder,
-//         &body.tail_expression,
-//         functions,
-//         arguments,
-//     )
-// }
+fn build_block_expression<'ink>(
+    context: &'ink Context,
+    builder: &'ink Builder,
+    function_map: &HashMap<FunctionId, FunctionValue<'ink>>,
+    name_map: &HashMap<NameId, BasicValueEnum<'ink>>,
+    module: &Module,
+    body: &Body,
+    body_type_map: &BodyTypeMap,
+    block: &BlockExpression,
+) -> BasicValueEnum<'ink> {
+    build_expression(
+        context,
+        builder,
+        function_map,
+        name_map,
+        module,
+        body,
+        body_type_map,
+        block.tail_expression,
+    )
+}
 
-// fn build_expression<'context>(
-//     context: &'context Context,
-//     builder: &'context Builder,
-//     expression: &Expression,
-//     functions: &'context Vec<(SmolStr, inkwell::values::FunctionValue)>,
-//     arguments: &'context Vec<(SmolStr, inkwell::values::BasicValueEnum)>,
-// ) -> inkwell::values::BasicValueEnum<'context> {
-//     match expression {
-//         Expression::BlockExpression(block) => {
-//             build_block_expression(context, builder, block, functions, arguments)
-//         }
-//         Expression::BinaryExpression(lhs, op, rhs) => {
-//             let l_value =
-//                 build_expression(context, builder, lhs, functions, arguments).into_int_value();
-//             let r_value =
-//                 build_expression(context, builder, rhs, functions, arguments).into_int_value();
-//             match op {
-//                 BinaryOperator::Add => builder
-//                     .build_int_add::<inkwell::values::IntValue>(l_value, r_value, "")
-//                     .into(),
-//                 BinaryOperator::Sub => builder
-//                     .build_int_sub::<inkwell::values::IntValue>(l_value, r_value, "")
-//                     .into(),
-//                 BinaryOperator::Div => builder
-//                     .build_int_signed_div::<inkwell::values::IntValue>(l_value, r_value, "")
-//                     .into(),
-//                 BinaryOperator::Mul => builder
-//                     .build_int_mul::<inkwell::values::IntValue>(l_value, r_value, "")
-//                     .into(),
-//                 BinaryOperator::Rem => builder
-//                     .build_int_signed_rem::<inkwell::values::IntValue>(l_value, r_value, "")
-//                     .into(),
-//             }
-//         }
-//         Expression::UnaryExpression(inner, op) => {
-//             let inner_value =
-//                 build_expression(context, builder, inner, functions, arguments).into_int_value();
-//             match op {
-//                 hir::UnaryOperator::Minus => builder.build_int_neg(inner_value, "").into(),
-//             }
-//         }
-//         Expression::Literal(lit) => match lit {
-//             Literal::Integer(value, _suffix) => {
-//                 context.i32_type().const_int(*value as u64, true).into()
-//             }
-//         },
-//         Expression::NameReference(name) => {
-//             if let Some((_, value)) = arguments
-//                 .iter()
-//                 .find(|(name_to_find, _)| name == name_to_find)
-//             {
-//                 builder.build_load(value.into_pointer_value(), "")
-//             } else {
-//                 todo!("missing id {}", name)
-//             }
-//         }
-//         Expression::Call(call) => {
-//             let callee =
-//                 infer_callee_expression(context, builder, &call.callee, functions, arguments);
-//             let arguments =
-//                 call.arguments
-//                     .iter()
-//                     .fold(Vec::new(), |mut call_arguments, argument| {
-//                         let argument =
-//                             build_expression(context, builder, argument, functions, arguments);
-//                         call_arguments.push(argument);
-//                         call_arguments
-//                     });
-//             builder
-//                 .build_call(callee, arguments.as_slice(), "")
-//                 .try_as_basic_value()
-//                 .left()
-//                 .unwrap()
-//         }
-//     }
-// }
+fn build_expression<'ink>(
+    context: &'ink Context,
+    builder: &'ink Builder,
+    function_map: &HashMap<FunctionId, FunctionValue<'ink>>,
+    name_map: &HashMap<NameId, BasicValueEnum<'ink>>,
+    module: &Module,
+    body: &Body,
+    body_type_map: &BodyTypeMap,
+    expr_id: ExpressionId,
+) -> BasicValueEnum<'ink> {
+    let expr = &body.expressions[expr_id];
+    match expr {
+        Expression::BlockExpression(block) => build_block_expression(
+            context,
+            builder,
+            function_map,
+            name_map,
+            module,
+            body,
+            body_type_map,
+            block,
+        ),
+        Expression::BinaryExpression(op, lhs, rhs) => {
+            let lllhs = build_expression(
+                context,
+                builder,
+                function_map,
+                name_map,
+                module,
+                body,
+                body_type_map,
+                *lhs,
+            );
+            let llrhs = build_expression(
+                context,
+                builder,
+                function_map,
+                name_map,
+                module,
+                body,
+                body_type_map,
+                *rhs,
+            );
 
-// fn infer_callee_expression<'context>(
-//     context: &'context Context,
-//     builder: &'context Builder,
-//     expression: &Expression,
-//     functions: &'context Vec<(SmolStr, inkwell::values::FunctionValue)>,
-//     arguments: &'context Vec<(SmolStr, inkwell::values::BasicValueEnum)>,
-// ) -> inkwell::values::FunctionValue<'context> {
-//     match expression {
-//         Expression::BlockExpression(block) => infer_callee_expression(
-//             context,
-//             builder,
-//             &block.tail_expression,
-//             functions,
-//             arguments,
-//         ),
-//         Expression::NameReference(name) => {
-//             if let Some(function) = functions.iter().find(|(n, _)| name == n).map(|(_, f)| f) {
-//                 function.clone()
-//             } else {
-//                 panic!("Expected function")
-//             }
-//         }
-//         x => unimplemented!(
-//             "Callee expression of the type variant {:?} is not suported",
-//             x
-//         ),
-//     }
-// }
+            let ty = &body_type_map.type_of_expression[expr_id];
+
+            let llty = inkwell_basic_type(context, ty);
+
+            match llty {
+                BasicTypeEnum::ArrayType(_) => todo!(),
+                BasicTypeEnum::FloatType(_) => todo!(),
+                BasicTypeEnum::IntType(_int_ty) => {
+                    let lllhs = lllhs.into_int_value();
+                    let llrhs = llrhs.into_int_value();
+                    match op {
+                        BinaryOperator::Add => builder.build_int_add(lllhs, llrhs, "").into(),
+                        BinaryOperator::Sub => builder.build_int_sub(lllhs, llrhs, "").into(),
+                        BinaryOperator::Div => {
+                            builder.build_int_signed_div(lllhs, llrhs, "").into()
+                        }
+                        BinaryOperator::Mul => builder.build_int_mul(lllhs, llrhs, "").into(),
+                        BinaryOperator::Rem => {
+                            builder.build_int_signed_rem(lllhs, llrhs, "").into()
+                        }
+                    }
+                }
+                BasicTypeEnum::PointerType(_) => todo!(),
+                BasicTypeEnum::StructType(_) => todo!(),
+                BasicTypeEnum::VectorType(_) => todo!(),
+            }
+        }
+        Expression::UnaryExpression(_, _) => todo!(),
+        Expression::Literal(lit) => {
+            let ty = &body_type_map.type_of_expression[expr_id];
+            let llty = inkwell_basic_type(context, ty);
+            match llty {
+                BasicTypeEnum::ArrayType(_) => todo!(),
+                BasicTypeEnum::FloatType(_) => todo!(),
+                BasicTypeEnum::IntType(int_ty) => match lit {
+                    Literal::Integer(val, _) => int_ty.const_int(*val as u64, true).into(),
+                },
+                BasicTypeEnum::PointerType(_) => todo!(),
+                BasicTypeEnum::StructType(_) => todo!(),
+                BasicTypeEnum::VectorType(_) => todo!(),
+            }
+        }
+        Expression::NameReference(name) => {
+            if let Some(name_id) = body
+                .names
+                .iter()
+                .find(|(_, name_to_find)| name.id == name_to_find.id)
+                .map(|(id, _)| id)
+            {
+                let value = name_map[&name_id];
+                builder.build_load(value.into_pointer_value(), "")
+            } else {
+                panic!("cant find {} in scope", name.id);
+            }
+        }
+        Expression::Call(call) => {
+            let callee = match &body.expressions[call.callee] {
+                Expression::NameReference(name) => {
+                    let function_id = module
+                        .functions
+                        .iter()
+                        .find(|(_, function)| function.name.id == name.id)
+                        .map(|(id, _)| id)
+                        .unwrap_or_else(|| panic!("cant find function {} in scope", name.id));
+                    function_id
+                }
+                _e => panic!("calling function pointers are not implemented"),
+            };
+
+            let callee = function_map[&callee];
+
+            let arguments: Vec<_> = call
+                .arguments
+                .iter()
+                .map(|argument| {
+                    build_expression(
+                        context,
+                        builder,
+                        function_map,
+                        name_map,
+                        module,
+                        body,
+                        body_type_map,
+                        *argument,
+                    )
+                })
+                .collect();
+
+            builder
+                .build_call(callee, arguments.as_slice(), "")
+                .try_as_basic_value()
+                .left()
+                .unwrap()
+        }
+    }
+}
