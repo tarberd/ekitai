@@ -1,6 +1,8 @@
-use crate::{Body, Expression, Function, Module, Name, TypeReference};
+use crate::{
+    Body, Expression, ExpressionId, FunctionId, IntegerKind, Literal, Module, NameId, TypeReference,
+};
 
-use la_arena::{ArenaMap, Idx};
+use la_arena::ArenaMap;
 
 #[derive(Debug, PartialEq)]
 pub enum TypeError {
@@ -8,7 +10,7 @@ pub enum TypeError {
     TypeMismatch { expected: Type, actual: Type },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     I32,
     I64,
@@ -28,7 +30,7 @@ impl Type {
 }
 
 pub struct ModuleTypeMap {
-    pub function_to_type: ArenaMap<Idx<Function>, Type>,
+    pub function_to_type: ArenaMap<FunctionId, Type>,
 }
 
 impl ModuleTypeMap {
@@ -53,25 +55,147 @@ impl ModuleTypeMap {
     }
 }
 
+pub struct ExpressionScopes {}
+
 pub struct BodyTypeMap {
-    type_of_expression: ArenaMap<Idx<Expression>, Type>,
-    type_of_name: ArenaMap<Idx<Name>, Type>,
+    pub type_of_expression: ArenaMap<ExpressionId, Type>,
+    pub type_of_name: ArenaMap<NameId, Type>,
 }
 
 impl BodyTypeMap {
-    fn new(body: &Body) -> Self {
-        let type_of_name =
-            body.bindings
-                .iter()
-                .fold(ArenaMap::default(), |mut type_of_name, (name, typeref)| {
-                    let ref typeref = body.types[*typeref];
-                    let ty = Type::from(typeref);
-                    type_of_name.insert(name, ty);
-                    type_of_name
-                });
-        Self {
+    pub fn new(module: &Module, module_map: &ModuleTypeMap, body: &Body) -> Self {
+        let type_of_name = body.parameters.iter().fold(
+            ArenaMap::default(),
+            |mut type_of_name, (name, typeref)| {
+                let ref typeref = body.types[*typeref];
+                let ty = Type::from(typeref);
+                type_of_name.insert(name, ty);
+                type_of_name
+            },
+        );
+
+        let body_type_map = BodyTypeMap {
             type_of_expression: ArenaMap::default(),
             type_of_name,
+        };
+        let (body_type_map, _) =
+            Self::collect_expression_type(body_type_map, module, module_map, body, body.block);
+        body_type_map
+    }
+
+    fn collect_expression_type(
+        mut body_type_map: BodyTypeMap,
+        module: &Module,
+        module_map: &ModuleTypeMap,
+        body: &Body,
+        expr_id: ExpressionId,
+    ) -> (BodyTypeMap, Type) {
+        let expr = &body.expressions[expr_id];
+        match expr {
+            Expression::BlockExpression(block) => {
+                let (mut body_type_map, ty) = Self::collect_expression_type(
+                    body_type_map,
+                    module,
+                    module_map,
+                    body,
+                    block.tail_expression,
+                );
+                body_type_map.type_of_expression.insert(expr_id, ty.clone());
+                (body_type_map, ty)
+            }
+            Expression::BinaryExpression(_op, lhs, rhs) => {
+                let (body_type_map, lhs_ty) =
+                    Self::collect_expression_type(body_type_map, module, module_map, body, *lhs);
+                let (mut body_type_map, rhs_ty) =
+                    Self::collect_expression_type(body_type_map, module, module_map, body, *rhs);
+
+                let ty = match (lhs_ty, rhs_ty) {
+                    (a, b) if a == b => a,
+                    (Type::Unknown, b) => b,
+                    (a, Type::Unknown) => a,
+                    _ => panic!("type error"),
+                };
+
+                body_type_map.type_of_expression.insert(expr_id, ty.clone());
+                (body_type_map, ty)
+            }
+            Expression::UnaryExpression(_op, inner_expr) => {
+                let (mut body_type_map, ty) = Self::collect_expression_type(
+                    body_type_map,
+                    module,
+                    module_map,
+                    body,
+                    *inner_expr,
+                );
+                body_type_map.type_of_expression.insert(expr_id, ty.clone());
+                (body_type_map, ty)
+            }
+            Expression::Literal(lit) => match lit {
+                Literal::Integer(_, int_kind) => {
+                    let ty = match int_kind {
+                        IntegerKind::Unsuffixed => Type::Unknown,
+                        IntegerKind::I32 => Type::I32,
+                        IntegerKind::I64 => Type::I64,
+                    };
+                    body_type_map.type_of_expression.insert(expr_id, ty.clone());
+                    (body_type_map, ty)
+                }
+            },
+            Expression::NameReference(name) => {
+                match body
+                    .names
+                    .iter()
+                    .find(|(_, name_to_find)| name_to_find.id == name.id)
+                {
+                    Some((id, _)) => {
+                        let ty = body_type_map.type_of_name[id].clone();
+                        body_type_map.type_of_expression.insert(expr_id, ty.clone());
+                        (body_type_map, ty)
+                    }
+                    None => match module
+                        .functions
+                        .iter()
+                        .find(|(_, function)| function.name.id == name.id)
+                    {
+                        Some((id, _)) => {
+                            let ty = module_map.function_to_type[id].clone();
+                            body_type_map.type_of_expression.insert(expr_id, ty.clone());
+                            (body_type_map, ty)
+                        }
+                        None => panic!(),
+                    },
+                }
+            }
+            Expression::Call(call) => {
+                let (body_type_map, callee_ty) = Self::collect_expression_type(
+                    body_type_map,
+                    module,
+                    module_map,
+                    body,
+                    call.callee,
+                );
+                let body_type_map =
+                    call.arguments
+                        .iter()
+                        .fold(body_type_map, |body_type_map, arg_id| {
+                            let (mut body_type_map, ty) = Self::collect_expression_type(
+                                body_type_map,
+                                module,
+                                module_map,
+                                body,
+                                *arg_id,
+                            );
+                            body_type_map.type_of_expression.insert(*arg_id, ty);
+                            body_type_map
+                        });
+                let ty = match callee_ty {
+                    Type::I32 => todo!(),
+                    Type::I64 => todo!(),
+                    Type::Function(_, ret) => *ret,
+                    Type::Unknown => todo!(),
+                };
+                (body_type_map, ty)
+            }
         }
     }
 }
