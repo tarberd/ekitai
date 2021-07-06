@@ -83,15 +83,17 @@ fn parse_name_reference<S: TokenSource>(p: &mut Parser<S>) {
     }
 }
 
-fn parse_block_expression<S: TokenSource>(p: &mut Parser<S>) {
+fn parse_block_expression<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
     if p.at(OpenBraces) {
         let m = p.start();
         p.bump();
         expression(p);
         p.expect(CloseBraces);
-        m.complete(p, BlockExpression);
+        let mark = m.complete(p, BlockExpression);
+        Some(mark)
     } else {
         p.error(ParseError::new(OpenBraces, p.current()));
+        None
     }
 }
 
@@ -181,6 +183,8 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
         prefix_expression(p)
     } else if p.at(OpenParenthesis) {
         parenthesis_expression(p)
+    } else if p.at(OpenBraces) {
+        parse_block_expression(p).unwrap()
     } else {
         p.error(ParseError::new(Integer, p.current()));
         p.error(ParseError::new(Identifier, p.current()));
@@ -211,7 +215,7 @@ fn call_expr<S: TokenSource>(p: &mut Parser<S>, lhs: CompletedMarker) -> Complet
     m.complete(p, CallExpression)
 }
 
-fn argument_list<S:TokenSource>(p: &mut Parser<S>) {
+fn argument_list<S: TokenSource>(p: &mut Parser<S>) {
     assert!(p.at(OpenParenthesis));
     let m = p.start();
     p.bump();
@@ -225,10 +229,8 @@ fn argument_list<S:TokenSource>(p: &mut Parser<S>) {
 
     if p.at(CloseParenthesis) {
         p.bump();
-    }
-    else {
+    } else {
         p.error(ParseError::new(CloseParenthesis, None))
-
     }
     m.complete(p, ArgumentList);
 }

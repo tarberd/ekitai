@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
-use hir::type_check::{BodyTypeMap, ModuleTypeMap, Type};
-use hir::{
-    BinaryOperator, BlockExpression, Body, Expression, ExpressionId, FunctionId, Literal, Module,
-    NameId,
-};
+use hir::type_check::{BodyTypeMap, IntegerType, ModuleTypeMap, Type};
+use hir::{BinaryOperator, BlockExpression, Body, Expression, ExpressionId, FunctionId, Literal, Module, NameId};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::types::{BasicType, BasicTypeEnum, FunctionType};
@@ -12,8 +9,8 @@ use inkwell::values::{BasicValueEnum, FunctionValue};
 
 fn inkwell_basic_type<'ink>(context: &'ink Context, ty: &Type) -> BasicTypeEnum<'ink> {
     match ty {
-        Type::I32 => context.i32_type().into(),
-        Type::I64 => context.i64_type().into(),
+        Type::Integer(IntegerType::I32) => context.i32_type().into(),
+        Type::Integer(IntegerType::I64) => context.i64_type().into(),
         Type::Function(_, _) => panic!("trying to lower function type"),
         Type::Unknown => panic!("trying to lower unknown type"),
     }
@@ -21,8 +18,6 @@ fn inkwell_basic_type<'ink>(context: &'ink Context, ty: &Type) -> BasicTypeEnum<
 
 fn inkwell_generate_function_type<'ink>(context: &'ink Context, ty: &Type) -> FunctionType<'ink> {
     match ty {
-        Type::I32 => todo!(),
-        Type::I64 => todo!(),
         Type::Function(parameters, return_ty) => {
             let parameter_types: Vec<_> = parameters
                 .iter()
@@ -31,7 +26,7 @@ fn inkwell_generate_function_type<'ink>(context: &'ink Context, ty: &Type) -> Fu
             let return_type = inkwell_basic_type(context, return_ty);
             return_type.fn_type(parameter_types.as_slice(), false)
         }
-        Type::Unknown => todo!(),
+        _ => panic!("trying to lower non function type to llvm function"),
     }
 }
 

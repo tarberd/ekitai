@@ -199,7 +199,24 @@ fn function_call() {
             CloseParenthesis@8..9 ")"
           ArgumentList@9..11
             OpenParenthesis@9..10 "("
-            CloseParenthesis@10..11 ")""#]])
+            CloseParenthesis@10..11 ")""#]]);
+    check_str("((foo)())()", expect![[r#"
+        CallExpression@0..11
+          ParenthesisExpression@0..9
+            OpenParenthesis@0..1 "("
+            CallExpression@1..8
+              ParenthesisExpression@1..6
+                OpenParenthesis@1..2 "("
+                NameReference@2..5
+                  Identifier@2..5 "foo"
+                CloseParenthesis@5..6 ")"
+              ArgumentList@6..8
+                OpenParenthesis@6..7 "("
+                CloseParenthesis@7..8 ")"
+            CloseParenthesis@8..9 ")"
+          ArgumentList@9..11
+            OpenParenthesis@9..10 "("
+            CloseParenthesis@10..11 ")""#]]);
 }
 
 #[test]
@@ -287,5 +304,39 @@ fn function_call_with_arguments() {
                   Identifier@18..19 "a"
                 CloseParenthesis@19..20 ")"
             CloseParenthesis@20..21 ")""#]],
+    );
+}
+
+#[test]
+fn expression_blocks() {
+    check_str(
+        "{0}",
+        expect![[r#"
+        CallExpression@0..18
+          NameReference@0..3
+            Identifier@0..3 "foo"
+          ArgumentList@3..18
+            OpenParenthesis@3..4 "("
+            InfixExpression@4..7
+              Literal@4..5
+                Integer@4..5 "5"
+              Plus@5..6 "+"
+              Literal@6..7
+                Integer@6..7 "5"
+            Comma@7..8 ","
+            Whitespace@8..9 " "
+            NameReference@9..10
+              Identifier@9..10 "a"
+            Comma@10..11 ","
+            Whitespace@11..12 " "
+            NameReference@12..13
+              Identifier@12..13 "b"
+            Comma@13..14 ","
+            Whitespace@14..15 " "
+            PrefixExpression@15..17
+              Minus@15..16 "-"
+              NameReference@16..17
+                Identifier@16..17 "a"
+            CloseParenthesis@17..18 ")""#]],
     );
 }

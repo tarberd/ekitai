@@ -362,7 +362,7 @@ impl Literal {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IntegerKind {
     Unsuffixed,
     I32,

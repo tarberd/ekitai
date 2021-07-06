@@ -12,8 +12,7 @@ pub enum TypeError {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    I32,
-    I64,
+    Integer(IntegerType),
     Function(Vec<Type>, Box<Type>),
     Unknown,
 }
@@ -22,11 +21,17 @@ impl Type {
     fn from(type_reference: &TypeReference) -> Self {
         let TypeReference { id } = type_reference;
         match id.as_str() {
-            "i32" => Type::I32,
-            "i64" => Type::I64,
+            "i32" => Type::Integer(IntegerType::I32),
+            "i64" => Type::Integer(IntegerType::I64),
             _ => Type::Unknown,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum IntegerType {
+    I32,
+    I64,
 }
 
 pub struct ModuleTypeMap {
@@ -134,8 +139,8 @@ impl BodyTypeMap {
                 Literal::Integer(_, int_kind) => {
                     let ty = match int_kind {
                         IntegerKind::Unsuffixed => Type::Unknown,
-                        IntegerKind::I32 => Type::I32,
-                        IntegerKind::I64 => Type::I64,
+                        IntegerKind::I32 => Type::Integer(IntegerType::I32),
+                        IntegerKind::I64 => Type::Integer(IntegerType::I64),
                     };
                     body_type_map.type_of_expression.insert(expr_id, ty.clone());
                     (body_type_map, ty)
@@ -174,10 +179,15 @@ impl BodyTypeMap {
                     body,
                     call.callee,
                 );
+                let (arguments_ty, ty) = match callee_ty {
+                    Type::Function(args, ret) => (args, *ret),
+                    x => panic!("cally type is not a function. {:?}", x),
+                };
                 let body_type_map =
                     call.arguments
                         .iter()
-                        .fold(body_type_map, |body_type_map, arg_id| {
+                        .zip(arguments_ty)
+                        .fold(body_type_map, |body_type_map, (arg_id, arg_ty)| {
                             let (mut body_type_map, ty) = Self::collect_expression_type(
                                 body_type_map,
                                 module,
@@ -185,15 +195,20 @@ impl BodyTypeMap {
                                 body,
                                 *arg_id,
                             );
+
+                            let ty = if ty == Type::Unknown {
+                                arg_ty.clone()
+                            } else {
+                                ty
+                            };
+
+                            if ty != arg_ty {
+                                panic!("mismatch type of function call argument. Exprected {:?} but found {:?}.", arg_ty, ty);
+                            }
+
                             body_type_map.type_of_expression.insert(*arg_id, ty);
                             body_type_map
                         });
-                let ty = match callee_ty {
-                    Type::I32 => todo!(),
-                    Type::I64 => todo!(),
-                    Type::Function(_, ret) => *ret,
-                    Type::Unknown => todo!(),
-                };
                 (body_type_map, ty)
             }
         }
