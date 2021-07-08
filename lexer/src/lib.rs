@@ -35,10 +35,28 @@ pub enum TokenKind {
     Slash,
     #[token("%")]
     Percent,
+    #[token(">")]
+    Greater,
+    #[token("<")]
+    Less,
+    #[token("!")]
+    Exclamation,
+    #[token("==")]
+    DoubleEquals,
+    #[token("!=")]
+    ExclamationEquals,
+    #[token(">=")]
+    GreaterEquals,
+    #[token("<=")]
+    LessEquals,
     #[token("->")]
     Arrow,
     #[token("fn")]
     FnKw,
+    #[token("if")]
+    IfKw,
+    #[token("else")]
+    ElseKw,
     #[regex("[[:alpha:]_][[:word:]]*")]
     Identifier,
     #[regex("[[:digit:]][[:digit:]_]*([[:alpha:]][[:word:]]*)?")]
@@ -179,6 +197,41 @@ mod tests {
     }
 
     #[test]
+    fn lex_exclamation() {
+        check("!", TokenKind::Exclamation);
+    }
+
+    #[test]
+    fn lex_double_equals() {
+        check("==", TokenKind::DoubleEquals);
+    }
+
+    #[test]
+    fn lex_not_equals() {
+        check("!=", TokenKind::ExclamationEquals);
+    }
+
+    #[test]
+    fn lex_greater() {
+        check(">", TokenKind::Greater);
+    }
+
+    #[test]
+    fn lex_greater_equals() {
+        check(">=", TokenKind::GreaterEquals);
+    }
+
+    #[test]
+    fn lex_less() {
+        check("<", TokenKind::Less);
+    }
+
+    #[test]
+    fn lex_less_equals() {
+        check("<=", TokenKind::LessEquals);
+    }
+
+    #[test]
     fn lex_arrow() {
         check("->", TokenKind::Arrow);
     }
@@ -186,6 +239,16 @@ mod tests {
     #[test]
     fn lex_fn() {
         check("fn", TokenKind::FnKw);
+    }
+
+    #[test]
+    fn lex_if() {
+        check("if", TokenKind::IfKw);
+    }
+
+    #[test]
+    fn lex_else() {
+        check("else", TokenKind::ElseKw);
     }
 
     #[test]

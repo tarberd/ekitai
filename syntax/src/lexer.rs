@@ -35,7 +35,11 @@ impl<'i> Iterator for Lexer<'i> {
     type Item = Token<'i>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let lexer::Token { kind, lexeme, range } = self.inner.next()?;
+        let lexer::Token {
+            kind,
+            lexeme,
+            range,
+        } = self.inner.next()?;
 
         Some(Token::new(into_syntax_kind(kind), lexeme, range))
     }
@@ -58,8 +62,17 @@ fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
         TokenKind::Asterisk => SyntaxKind::Asterisk,
         TokenKind::Slash => SyntaxKind::Slash,
         TokenKind::Percent => SyntaxKind::Percent,
+        TokenKind::Exclamation => SyntaxKind::Exclamation,
+        TokenKind::DoubleEquals => SyntaxKind::DoubleEquals,
+        TokenKind::ExclamationEquals => SyntaxKind::ExclamationEquals,
+        TokenKind::Greater => SyntaxKind::Greater,
+        TokenKind::GreaterEquals => SyntaxKind::GreaterEquals,
+        TokenKind::Less => SyntaxKind::Less,
+        TokenKind::LessEquals => SyntaxKind::LessEquals,
         TokenKind::Arrow => SyntaxKind::Arrow,
         TokenKind::FnKw => SyntaxKind::FnKw,
+        TokenKind::IfKw => SyntaxKind::IfKw,
+        TokenKind::ElseKw => SyntaxKind::ElseKw,
         TokenKind::Identifier => SyntaxKind::Identifier,
         TokenKind::Integer => SyntaxKind::Integer,
         TokenKind::Error => SyntaxKind::Error,

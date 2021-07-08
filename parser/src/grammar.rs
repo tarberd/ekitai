@@ -115,6 +115,12 @@ enum InfixOp {
     Mul,
     Div,
     Rest,
+    Equals,
+    NotEquals,
+    Less,
+    LessEquals,
+    Greater,
+    GreaterEquals,
 }
 
 impl InfixOp {
@@ -122,6 +128,12 @@ impl InfixOp {
         match self {
             Self::Add | Self::Sub => (1, 2),
             Self::Mul | Self::Div | Self::Rest => (3, 4),
+            Self::Equals
+            | Self::NotEquals
+            | Self::Less
+            | Self::LessEquals
+            | Self::Greater
+            | Self::GreaterEquals => (0, 0),
         }
     }
 }
@@ -147,6 +159,18 @@ fn expression_binding_power<S: TokenSource>(
             InfixOp::Div
         } else if p.at(Percent) {
             InfixOp::Rest
+        } else if p.at(ExclamationEquals) {
+            InfixOp::NotEquals
+        } else if p.at(DoubleEquals) {
+            InfixOp::Equals
+        } else if p.at(Less) {
+            InfixOp::Less
+        } else if p.at(LessEquals) {
+            InfixOp::LessEquals
+        } else if p.at(Greater) {
+            InfixOp::Greater
+        } else if p.at(GreaterEquals) {
+            InfixOp::GreaterEquals
         } else {
             // We’re not at an operator; we don’t know what to do next, so we return and let the
             // caller decide.
@@ -185,6 +209,8 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
         parenthesis_expression(p)
     } else if p.at(OpenBraces) {
         parse_block_expression(p).unwrap()
+    } else if p.at(IfKw) {
+        if_expression(p)
     } else {
         p.error(ParseError::new(Integer, p.current()));
         p.error(ParseError::new(Identifier, p.current()));
@@ -271,8 +297,19 @@ fn parenthesis_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker 
 
     let m = p.start();
     p.bump();
-    expression_binding_power(p, 0);
+    expression(p);
     p.expect(CloseParenthesis);
 
     m.complete(p, ParenthesisExpression)
+}
+
+fn if_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
+    assert!(p.at(IfKw));
+    let m = p.start();
+    p.bump();
+    expression(p);
+    parse_block_expression(p);
+    p.bump();
+    parse_block_expression(p);
+    m.complete(p, IfExpression)
 }

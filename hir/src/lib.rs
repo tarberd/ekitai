@@ -194,6 +194,9 @@ impl Body {
             cst::Expression::CallExpression(call) => {
                 Self::collect_call_expression(expressions, call)
             }
+            cst::Expression::IfExpression(_if_expr) => {
+                todo!()
+            }
         }
     }
 
