@@ -182,12 +182,234 @@ impl std::convert::TryFrom<SyntaxToken> for Percent {
 }
 
 #[derive(Debug)]
+pub struct DoubleEquals(SyntaxToken);
+
+impl CstToken for DoubleEquals {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl DoubleEquals {
+    pub(crate) fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::DoubleEquals
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for DoubleEquals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for DoubleEquals {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ExclamationEquals(SyntaxToken);
+
+impl CstToken for ExclamationEquals {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl ExclamationEquals {
+    pub(crate) fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::ExclamationEquals
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for ExclamationEquals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for ExclamationEquals {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Greater(SyntaxToken);
+
+impl CstToken for Greater {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl Greater {
+    pub(crate) fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::Greater
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for Greater {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for Greater {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct GreaterEquals(SyntaxToken);
+
+impl CstToken for GreaterEquals {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl GreaterEquals {
+    pub(crate) fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::GreaterEquals
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for GreaterEquals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for GreaterEquals {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Less(SyntaxToken);
+
+impl CstToken for Less {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl Less {
+    pub(crate) fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::Less
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for Less {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for Less {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct LessEquals(SyntaxToken);
+
+impl CstToken for LessEquals {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl LessEquals {
+    pub(crate) fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::LessEquals
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for LessEquals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for LessEquals {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum BinaryOperator {
     Plus(Plus),
     Minus(Minus),
     Asterisk(Asterisk),
     Slash(Slash),
     Percent(Percent),
+    DoubleEquals(DoubleEquals),
+    ExclamationEquals(ExclamationEquals),
+    Greater(Greater),
+    GreaterEquals(GreaterEquals),
+    Less(Less),
+    LessEquals(LessEquals),
 }
 
 impl CstToken for BinaryOperator {
@@ -198,6 +420,12 @@ impl CstToken for BinaryOperator {
             Self::Asterisk(tok) => tok.as_syntax_token(),
             Self::Slash(tok) => tok.as_syntax_token(),
             Self::Percent(tok) => tok.as_syntax_token(),
+            Self::DoubleEquals(tok) => tok.as_syntax_token(),
+            Self::ExclamationEquals(tok) => tok.as_syntax_token(),
+            Self::Greater(tok) => tok.as_syntax_token(),
+            Self::GreaterEquals(tok) => tok.as_syntax_token(),
+            Self::Less(tok) => tok.as_syntax_token(),
+            Self::LessEquals(tok) => tok.as_syntax_token(),
         }
     }
 }
@@ -258,9 +486,7 @@ impl CstToken for UnaryOperator {
 
 impl UnaryOperator {
     fn try_from_set() -> &'static [SyntaxKind] {
-        static KINDS: &[SyntaxKind] = &[
-            SyntaxKind::Minus,
-        ];
+        static KINDS: &[SyntaxKind] = &[SyntaxKind::Minus];
         &KINDS
     }
 

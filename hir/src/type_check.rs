@@ -1,5 +1,6 @@
 use crate::{
-    Body, Expression, ExpressionId, FunctionId, IntegerKind, Literal, Module, NameId, TypeReference,
+    BinaryOperator, Body, Expression, ExpressionId, FunctionId, IntegerKind, Literal, Module,
+    NameId, TypeReference,
 };
 
 use la_arena::ArenaMap;
@@ -12,6 +13,7 @@ pub enum TypeError {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
+    Boolean,
     Integer(IntegerType),
     Function(Vec<Type>, Box<Type>),
     Unknown,
@@ -108,21 +110,32 @@ impl BodyTypeMap {
                 body_type_map.type_of_expression.insert(expr_id, ty.clone());
                 (body_type_map, ty)
             }
-            Expression::BinaryExpression(_op, lhs, rhs) => {
+            Expression::BinaryExpression(op, lhs, rhs) => {
                 let (body_type_map, lhs_ty) =
                     Self::collect_expression_type(body_type_map, module, module_map, body, *lhs);
                 let (mut body_type_map, rhs_ty) =
                     Self::collect_expression_type(body_type_map, module, module_map, body, *rhs);
 
-                let ty = match (lhs_ty, rhs_ty) {
-                    (a, b) if a == b => a,
-                    (Type::Unknown, b) => b,
-                    (a, Type::Unknown) => a,
-                    _ => panic!("type error"),
+                let ret_ty = match op {
+                    BinaryOperator::Arithmetic(_) => match rhs_ty {
+                        Type::Integer(_) => rhs_ty.clone(),
+                        _ => panic!(),
+                    },
+                    BinaryOperator::Compare(_) => Type::Boolean,
                 };
 
-                body_type_map.type_of_expression.insert(expr_id, ty.clone());
-                (body_type_map, ty)
+                match (lhs_ty, rhs_ty) {
+                    (a, b) if a == b => a,
+                    (a, b) => panic!(
+                        "Mismatch types on binary expression. lhs {:?} rhs {:?}",
+                        a, b
+                    ),
+                };
+
+                body_type_map
+                    .type_of_expression
+                    .insert(expr_id, ret_ty.clone());
+                (body_type_map, ret_ty)
             }
             Expression::UnaryExpression(_op, inner_expr) => {
                 let (mut body_type_map, ty) = Self::collect_expression_type(
@@ -183,7 +196,7 @@ impl BodyTypeMap {
                     Type::Function(args, ret) => (args, *ret),
                     x => panic!("cally type is not a function. {:?}", x),
                 };
-                let body_type_map =
+                let mut body_type_map =
                     call.arguments
                         .iter()
                         .zip(arguments_ty)
@@ -209,7 +222,52 @@ impl BodyTypeMap {
                             body_type_map.type_of_expression.insert(*arg_id, ty);
                             body_type_map
                         });
+                body_type_map.type_of_expression.insert(expr_id, ty.clone());
                 (body_type_map, ty)
+            }
+            Expression::IfExpression(if_expr) => {
+                let (body_type_map, condition_ty) = Self::collect_expression_type(
+                    body_type_map,
+                    module,
+                    module_map,
+                    body,
+                    if_expr.condition,
+                );
+
+                if condition_ty != Type::Boolean {
+                    panic!(
+                        "if condition type. Expected boolean found {:?}",
+                        condition_ty
+                    );
+                }
+
+                let (body_type_map, than_ty) = Self::collect_expression_type(
+                    body_type_map,
+                    module,
+                    module_map,
+                    body,
+                    if_expr.than_branch,
+                );
+
+                let (mut body_type_map, else_ty) = Self::collect_expression_type(
+                    body_type_map,
+                    module,
+                    module_map,
+                    body,
+                    if_expr.else_branch,
+                );
+
+                if than_ty != else_ty {
+                    panic!(
+                        "If branches difers in type. Than type {:?} Else type {:?}",
+                        than_ty, else_ty
+                    );
+                }
+
+                body_type_map
+                    .type_of_expression
+                    .insert(expr_id, than_ty.clone());
+                (body_type_map, than_ty)
             }
         }
     }

@@ -1,4 +1,6 @@
 pub mod type_check;
+use std::fmt::Binary;
+
 use la_arena::{Arena, ArenaMap, Idx};
 use smol_str::SmolStr;
 use syntax::cst;
@@ -194,8 +196,21 @@ impl Body {
             cst::Expression::CallExpression(call) => {
                 Self::collect_call_expression(expressions, call)
             }
-            cst::Expression::IfExpression(_if_expr) => {
-                todo!()
+            cst::Expression::IfExpression(if_expr) => {
+                let (expressions, condition) =
+                    Self::collect_expression(expressions, if_expr.contidion().unwrap());
+                let (expressions, than_branch) =
+                    Self::collect_expression(expressions, if_expr.than_branch().unwrap());
+                let (mut expressions, else_branch) =
+                    Self::collect_expression(expressions, if_expr.else_branch().unwrap());
+
+                let id = expressions.alloc(Expression::IfExpression(IfExpression {
+                    condition,
+                    than_branch,
+                    else_branch,
+                }));
+
+                (expressions, id)
             }
         }
     }
@@ -217,11 +232,35 @@ impl Body {
             .operator()
             .expect("missing operator from infix expression")
         {
-            cst::BinaryOperator::Asterisk(_) => BinaryOperator::Mul,
-            cst::BinaryOperator::Plus(_) => BinaryOperator::Add,
-            cst::BinaryOperator::Minus(_) => BinaryOperator::Sub,
-            cst::BinaryOperator::Slash(_) => BinaryOperator::Div,
-            cst::BinaryOperator::Percent(_) => BinaryOperator::Rem,
+            cst::BinaryOperator::Asterisk(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Mul),
+            cst::BinaryOperator::Plus(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Add),
+            cst::BinaryOperator::Minus(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Sub),
+            cst::BinaryOperator::Slash(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Div),
+            cst::BinaryOperator::Percent(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Rem),
+            cst::BinaryOperator::DoubleEquals(_) => {
+                BinaryOperator::Compare(CompareOperator::Equality { negated: false })
+            }
+            cst::BinaryOperator::ExclamationEquals(_) => {
+                BinaryOperator::Compare(CompareOperator::Equality { negated: true })
+            }
+            cst::BinaryOperator::Less(_) => BinaryOperator::Compare(CompareOperator::Order {
+                ordering: Ordering::Less,
+                strict: true,
+            }),
+            cst::BinaryOperator::LessEquals(_) => BinaryOperator::Compare(CompareOperator::Order {
+                ordering: Ordering::Less,
+                strict: false,
+            }),
+            cst::BinaryOperator::Greater(_) => BinaryOperator::Compare(CompareOperator::Order {
+                ordering: Ordering::Greater,
+                strict: true,
+            }),
+            cst::BinaryOperator::GreaterEquals(_) => {
+                BinaryOperator::Compare(CompareOperator::Order {
+                    ordering: Ordering::Greater,
+                    strict: false,
+                })
+            }
         };
 
         let bin_expr = Expression::BinaryExpression(op, lhs, rhs);
@@ -282,11 +321,29 @@ impl Body {
 
 #[derive(Debug)]
 pub enum BinaryOperator {
+    Arithmetic(ArithmeticOperator),
+    Compare(CompareOperator),
+}
+
+#[derive(Debug)]
+pub enum ArithmeticOperator {
     Add,
     Sub,
     Div,
     Mul,
     Rem,
+}
+
+#[derive(Debug)]
+pub enum CompareOperator {
+    Equality { negated: bool },
+    Order { ordering: Ordering, strict: bool },
+}
+
+#[derive(Debug)]
+pub enum Ordering {
+    Less,
+    Greater,
 }
 
 #[derive(Debug)]
@@ -299,6 +356,7 @@ pub type ExpressionId = Idx<Expression>;
 #[derive(Debug)]
 pub enum Expression {
     BlockExpression(BlockExpression),
+    IfExpression(IfExpression),
     BinaryExpression(BinaryOperator, ExpressionId, ExpressionId),
     UnaryExpression(UnaryOperator, ExpressionId),
     Literal(Literal),
@@ -315,6 +373,13 @@ pub struct Call {
 #[derive(Debug)]
 pub struct BlockExpression {
     pub tail_expression: ExpressionId,
+}
+
+#[derive(Debug)]
+pub struct IfExpression {
+    pub condition: ExpressionId,
+    pub than_branch: ExpressionId,
+    pub else_branch: ExpressionId,
 }
 
 #[derive(Debug)]

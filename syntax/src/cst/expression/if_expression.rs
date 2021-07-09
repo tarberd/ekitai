@@ -18,14 +18,14 @@ impl IfExpression {
         SyntaxKind::IfExpression
     }
 
-    pub fn contidion_expression(&self) -> Option<Expression> {
+    pub fn contidion(&self) -> Option<Expression> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|s| Expression::try_from(s).ok())
     }
 
-    pub fn true_expression(&self) -> Option<Expression> {
+    pub fn than_branch(&self) -> Option<Expression> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
@@ -33,7 +33,7 @@ impl IfExpression {
             .nth(1)
     }
 
-    pub fn false_expression(&self) -> Option<Expression> {
+    pub fn else_branch(&self) -> Option<Expression> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
