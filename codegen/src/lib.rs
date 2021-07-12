@@ -169,9 +169,7 @@ fn build_expression<'ink>(
             let llty = inkwell_basic_type(context, ty);
 
             match llty {
-                BasicTypeEnum::ArrayType(_) => todo!(),
-                BasicTypeEnum::FloatType(_) => todo!(),
-                BasicTypeEnum::IntType(_int_ty) => {
+                BasicTypeEnum::IntType(_) => {
                     let lllhs = lllhs.into_int_value();
                     let llrhs = llrhs.into_int_value();
                     match op {
@@ -215,24 +213,46 @@ fn build_expression<'ink>(
                         }
                     }
                 }
-                BasicTypeEnum::PointerType(_) => todo!(),
-                BasicTypeEnum::StructType(_) => todo!(),
-                BasicTypeEnum::VectorType(_) => todo!(),
+                x => todo!("implement lower for {:?}", x),
             }
         }
-        Expression::UnaryExpression(_, _) => todo!("implement lower unary expression to llvm"),
+        Expression::UnaryExpression(op, expr) => {
+            let expr_value = build_expression(
+                context,
+                builder,
+                function_value,
+                function_map,
+                name_map,
+                module,
+                body,
+                body_type_map,
+                *expr,
+            );
+
+            let ty = &body_type_map.type_of_expression[expr_id];
+            let llty = inkwell_basic_type(context, ty);
+
+            match llty {
+                BasicTypeEnum::IntType(int_type) => {
+                    let expr_value = expr_value.into_int_value();
+                    match op {
+                        hir::UnaryOperator::Minus => {
+                            let zero = int_type.const_int(0, true);
+                            builder.build_int_sub(zero, expr_value, "").into()
+                        }
+                    }
+                },
+                x => todo!("implement lower for {:?}", x),
+            }
+        },
         Expression::Literal(lit) => {
             let ty = &body_type_map.type_of_expression[expr_id];
             let llty = inkwell_basic_type(context, ty);
             match llty {
-                BasicTypeEnum::ArrayType(_) => todo!(),
-                BasicTypeEnum::FloatType(_) => todo!(),
                 BasicTypeEnum::IntType(int_ty) => match lit {
                     Literal::Integer(val, _) => int_ty.const_int(*val as u64, true).into(),
                 },
-                BasicTypeEnum::PointerType(_) => todo!(),
-                BasicTypeEnum::StructType(_) => todo!(),
-                BasicTypeEnum::VectorType(_) => todo!(),
+                x => todo!("implement lower for {:?}", x),
             }
         }
         Expression::NameReference(name) => {
