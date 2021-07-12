@@ -199,14 +199,14 @@ impl Body {
             cst::Expression::IfExpression(if_expr) => {
                 let (expressions, condition) =
                     Self::collect_expression(expressions, if_expr.contidion().unwrap());
-                let (expressions, than_branch) =
-                    Self::collect_expression(expressions, if_expr.than_branch().unwrap());
+                let (expressions, then_branch) =
+                    Self::collect_expression(expressions, if_expr.then_branch().unwrap());
                 let (mut expressions, else_branch) =
                     Self::collect_expression(expressions, if_expr.else_branch().unwrap());
 
                 let id = expressions.alloc(Expression::IfExpression(IfExpression {
                     condition,
-                    than_branch,
+                    then_branch,
                     else_branch,
                 }));
 
@@ -378,7 +378,7 @@ pub struct BlockExpression {
 #[derive(Debug)]
 pub struct IfExpression {
     pub condition: ExpressionId,
-    pub than_branch: ExpressionId,
+    pub then_branch: ExpressionId,
     pub else_branch: ExpressionId,
 }
 

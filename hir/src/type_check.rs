@@ -246,7 +246,7 @@ impl BodyTypeMap {
                     module,
                     module_map,
                     body,
-                    if_expr.than_branch,
+                    if_expr.then_branch,
                 );
 
                 let (mut body_type_map, else_ty) = Self::collect_expression_type(

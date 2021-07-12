@@ -438,6 +438,12 @@ impl BinaryOperator {
             SyntaxKind::Asterisk,
             SyntaxKind::Slash,
             SyntaxKind::Percent,
+            SyntaxKind::DoubleEquals,
+            SyntaxKind::ExclamationEquals,
+            SyntaxKind::Less,
+            SyntaxKind::LessEquals,
+            SyntaxKind::Greater,
+            SyntaxKind::GreaterEquals,
         ];
         &KINDS
     }
@@ -449,6 +455,12 @@ impl BinaryOperator {
             SyntaxKind::Asterisk => Self::Asterisk(Asterisk(raw)),
             SyntaxKind::Slash => Self::Slash(Slash(raw)),
             SyntaxKind::Percent => Self::Percent(Percent(raw)),
+            SyntaxKind::DoubleEquals => Self::DoubleEquals(DoubleEquals(raw)),
+            SyntaxKind::ExclamationEquals => Self::ExclamationEquals(ExclamationEquals(raw)),
+            SyntaxKind::Less => Self::Less(Less(raw)),
+            SyntaxKind::LessEquals => Self::LessEquals(LessEquals(raw)),
+            SyntaxKind::Greater => Self::Greater(Greater(raw)),
+            SyntaxKind::GreaterEquals => Self::GreaterEquals(GreaterEquals(raw)),
             _ => panic!(),
         }
     }

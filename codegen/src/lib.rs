@@ -1,16 +1,21 @@
 use std::collections::HashMap;
 
 use hir::type_check::{BodyTypeMap, IntegerType, ModuleTypeMap, Type};
-use hir::{BinaryOperator, BlockExpression, Body, Expression, ExpressionId, FunctionId, Literal, Module, NameId};
+use hir::{
+    ArithmeticOperator, BinaryOperator, BlockExpression, Body, CompareOperator, Expression,
+    ExpressionId, FunctionId, IfExpression, Literal, Module, NameId,
+};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::types::{BasicType, BasicTypeEnum, FunctionType};
 use inkwell::values::{BasicValueEnum, FunctionValue};
+use inkwell::IntPredicate;
 
 fn inkwell_basic_type<'ink>(context: &'ink Context, ty: &Type) -> BasicTypeEnum<'ink> {
     match ty {
         Type::Integer(IntegerType::I32) => context.i32_type().into(),
         Type::Integer(IntegerType::I64) => context.i64_type().into(),
+        Type::Boolean => context.bool_type().into(),
         Type::Function(_, _) => panic!("trying to lower function type"),
         Type::Unknown => panic!("trying to lower unknown type"),
     }
@@ -71,6 +76,7 @@ pub fn build_assembly_ir(module: &Module) {
         let return_value = build_expression(
             &context,
             &builder,
+            &llfunction,
             &function_map,
             &name_map,
             module,
@@ -92,6 +98,7 @@ pub fn build_assembly_ir(module: &Module) {
 fn build_block_expression<'ink>(
     context: &'ink Context,
     builder: &'ink Builder,
+    function_value: &'ink FunctionValue,
     function_map: &HashMap<FunctionId, FunctionValue<'ink>>,
     name_map: &HashMap<NameId, BasicValueEnum<'ink>>,
     module: &Module,
@@ -102,6 +109,7 @@ fn build_block_expression<'ink>(
     build_expression(
         context,
         builder,
+        function_value,
         function_map,
         name_map,
         module,
@@ -114,6 +122,7 @@ fn build_block_expression<'ink>(
 fn build_expression<'ink>(
     context: &'ink Context,
     builder: &'ink Builder,
+    function_value: &'ink FunctionValue,
     function_map: &HashMap<FunctionId, FunctionValue<'ink>>,
     name_map: &HashMap<NameId, BasicValueEnum<'ink>>,
     module: &Module,
@@ -126,6 +135,7 @@ fn build_expression<'ink>(
         Expression::BlockExpression(block) => build_block_expression(
             context,
             builder,
+            function_value,
             function_map,
             name_map,
             module,
@@ -137,6 +147,7 @@ fn build_expression<'ink>(
             let lllhs = build_expression(
                 context,
                 builder,
+                function_value,
                 function_map,
                 name_map,
                 module,
@@ -147,6 +158,7 @@ fn build_expression<'ink>(
             let llrhs = build_expression(
                 context,
                 builder,
+                function_value,
                 function_map,
                 name_map,
                 module,
@@ -166,14 +178,43 @@ fn build_expression<'ink>(
                     let lllhs = lllhs.into_int_value();
                     let llrhs = llrhs.into_int_value();
                     match op {
-                        BinaryOperator::Add => builder.build_int_add(lllhs, llrhs, "").into(),
-                        BinaryOperator::Sub => builder.build_int_sub(lllhs, llrhs, "").into(),
-                        BinaryOperator::Div => {
-                            builder.build_int_signed_div(lllhs, llrhs, "").into()
-                        }
-                        BinaryOperator::Mul => builder.build_int_mul(lllhs, llrhs, "").into(),
-                        BinaryOperator::Rem => {
-                            builder.build_int_signed_rem(lllhs, llrhs, "").into()
+                        BinaryOperator::Arithmetic(arith) => match arith {
+                            ArithmeticOperator::Add => {
+                                builder.build_int_add(lllhs, llrhs, "").into()
+                            }
+                            ArithmeticOperator::Sub => {
+                                builder.build_int_sub(lllhs, llrhs, "").into()
+                            }
+                            ArithmeticOperator::Div => {
+                                builder.build_int_signed_div(lllhs, llrhs, "").into()
+                            }
+                            ArithmeticOperator::Mul => {
+                                builder.build_int_mul(lllhs, llrhs, "").into()
+                            }
+                            ArithmeticOperator::Rem => {
+                                builder.build_int_signed_rem(lllhs, llrhs, "").into()
+                            }
+                        },
+                        BinaryOperator::Compare(compare) => {
+                            let predicate = match compare {
+                                CompareOperator::Equality { negated } => match negated {
+                                    true => IntPredicate::NE,
+                                    false => IntPredicate::EQ,
+                                },
+                                CompareOperator::Order { ordering, strict } => match ordering {
+                                    hir::Ordering::Less => match strict {
+                                        true => IntPredicate::SLT,
+                                        false => IntPredicate::SLE,
+                                    },
+                                    hir::Ordering::Greater => match strict {
+                                        true => IntPredicate::SGT,
+                                        false => IntPredicate::SGE,
+                                    },
+                                },
+                            };
+                            builder
+                                .build_int_compare(predicate, lllhs, llrhs, "")
+                                .into()
                         }
                     }
                 }
@@ -182,7 +223,7 @@ fn build_expression<'ink>(
                 BasicTypeEnum::VectorType(_) => todo!(),
             }
         }
-        Expression::UnaryExpression(_, _) => todo!(),
+        Expression::UnaryExpression(_, _) => todo!("implement lower unary expression to llvm"),
         Expression::Literal(lit) => {
             let ty = &body_type_map.type_of_expression[expr_id];
             let llty = inkwell_basic_type(context, ty);
@@ -233,6 +274,7 @@ fn build_expression<'ink>(
                     build_expression(
                         context,
                         builder,
+                        function_value,
                         function_map,
                         name_map,
                         module,
@@ -248,6 +290,62 @@ fn build_expression<'ink>(
                 .try_as_basic_value()
                 .left()
                 .unwrap()
+        }
+        Expression::IfExpression(if_expr) => {
+            let comparison = build_expression(
+                context,
+                builder,
+                function_value,
+                function_map,
+                name_map,
+                module,
+                body,
+                body_type_map,
+                if_expr.condition,
+            )
+            .into_int_value();
+
+            let then_block = context.append_basic_block(*function_value, "then");
+            let else_block = context.append_basic_block(*function_value, "else");
+            let merge_block = context.append_basic_block(*function_value, "merge");
+            builder.build_conditional_branch(comparison, then_block, else_block);
+
+            builder.position_at_end(then_block);
+            let then_value = build_expression(
+                context,
+                builder,
+                function_value,
+                function_map,
+                name_map,
+                module,
+                body,
+                body_type_map,
+                if_expr.then_branch,
+            );
+            builder.build_unconditional_branch(merge_block);
+            else_block
+                .move_after(then_block)
+                .expect("Could not move else block after then block.");
+            builder.position_at_end(else_block);
+            let else_value = build_expression(
+                context,
+                builder,
+                function_value,
+                function_map,
+                name_map,
+                module,
+                body,
+                body_type_map,
+                if_expr.else_branch,
+            );
+            builder.build_unconditional_branch(merge_block);
+            merge_block
+                .move_after(else_block)
+                .expect("Could not move merge block after else block.");
+            builder.position_at_end(merge_block);
+            let phi = builder.build_phi(then_value.get_type(), "");
+            phi.add_incoming(&[(&then_value, then_block), (&else_value, else_block)]);
+            phi.as_basic_value()
         }
     }
 }

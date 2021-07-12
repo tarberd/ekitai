@@ -25,7 +25,7 @@ impl IfExpression {
             .find_map(|s| Expression::try_from(s).ok())
     }
 
-    pub fn than_branch(&self) -> Option<Expression> {
+    pub fn then_branch(&self) -> Option<Expression> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
