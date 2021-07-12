@@ -74,7 +74,7 @@ impl BodyTypeMap {
         let type_of_name = body.parameters.iter().fold(
             ArenaMap::default(),
             |mut type_of_name, (name, typeref)| {
-                let ref typeref = body.types[*typeref];
+                let typeref = &body.types[*typeref];
                 let ty = Type::from(typeref);
                 type_of_name.insert(name, ty);
                 type_of_name

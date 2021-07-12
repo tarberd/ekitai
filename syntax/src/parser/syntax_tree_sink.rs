@@ -72,7 +72,7 @@ impl<'t, 'i> SyntaxTreeSink<'t, 'i> {
         let Token { kind, lexeme, .. } = current;
         let _ = std::mem::replace(&mut self.previous_token, Some(current));
         self.builder
-            .token(EkitaiLanguage::kind_to_raw(kind.to_owned().into()), lexeme);
+            .token(EkitaiLanguage::kind_to_raw(*kind), lexeme);
     }
 }
 

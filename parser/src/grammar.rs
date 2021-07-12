@@ -8,7 +8,7 @@ const ITEM_RECOVERY_SET: &[SyntaxKind] = &[FnKw];
 pub(crate) fn parse_root<S: TokenSource>(p: &mut Parser<S>) {
     let m = p.start();
 
-    while let Some(_) = p.current() {
+    while p.current().is_some() {
         if p.at(FnKw) {
             parse_function(p)
         }
@@ -224,11 +224,8 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
 
 fn postfix_expression<S: TokenSource>(p: &mut Parser<S>, lhs: CompletedMarker) -> CompletedMarker {
     match p.current() {
-        Some(kind) => match kind {
-            OpenParenthesis => call_expr(p, lhs),
-            _ => lhs,
-        },
-        None => lhs,
+        Some(OpenParenthesis) => call_expr(p, lhs),
+        _ => lhs,
     }
 }
 

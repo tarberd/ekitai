@@ -5,10 +5,10 @@ use syntax::cst::SourceFile;
 fn main() {
     let args: Vec<_> = std::env::args()
         .into_iter()
-        .map(|arg| PathBuf::from(arg))
+        .map(PathBuf::from)
         .collect();
 
-    if let Some(file_path) = args.iter().nth(1) {
+    if let Some(file_path) = args.get(1) {
         println!("Compiling file: {}", file_path.to_str().unwrap());
         match fs::read_to_string(file_path) {
             Ok(source) => drive(source),

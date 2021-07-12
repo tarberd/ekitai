@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use hir::type_check::{BodyTypeMap, IntegerType, ModuleTypeMap, Type};
 use hir::{
     ArithmeticOperator, BinaryOperator, BlockExpression, Body, CompareOperator, Expression,
-    ExpressionId, FunctionId, IfExpression, Literal, Module, NameId,
+    ExpressionId, FunctionId, Literal, Module, NameId,
 };
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -89,10 +89,7 @@ pub fn build_assembly_ir(module: &Module) {
     }
 
     println!("{}", llvm_module.print_to_string().to_string());
-    match llvm_module.print_to_file("out.ll") {
-        Ok(_) => {}
-        Err(_) => {}
-    }
+    let _ = llvm_module.print_to_file("out.ll");
 }
 
 fn build_block_expression<'ink>(

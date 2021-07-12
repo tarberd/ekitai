@@ -1,5 +1,4 @@
 pub mod type_check;
-use std::fmt::Binary;
 
 use la_arena::{Arena, ArenaMap, Idx};
 use smol_str::SmolStr;
