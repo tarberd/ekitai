@@ -57,6 +57,14 @@ pub enum TokenKind {
     IfKw,
     #[token("else")]
     ElseKw,
+    #[token("true")]
+    TrueKw,
+    #[token("false")]
+    FalseKw,
+    #[token("data")]
+    DataKw,
+    #[token("match")]
+    MatchKw,
     #[regex("[[:alpha:]_][[:word:]]*")]
     Identifier,
     #[regex("[[:digit:]][[:digit:]_]*([[:alpha:]][[:word:]]*)?")]
@@ -249,6 +257,26 @@ mod tests {
     #[test]
     fn lex_else() {
         check("else", TokenKind::ElseKw);
+    }
+
+    #[test]
+    fn lex_true() {
+        check("true", TokenKind::TrueKw);
+    }
+
+    #[test]
+    fn lex_false() {
+        check("false", TokenKind::FalseKw);
+    }
+
+    #[test]
+    fn lex_data() {
+        check("data", TokenKind::DataKw);
+    }
+
+    #[test]
+    fn lex_match() {
+        check("match", TokenKind::MatchKw);
     }
 
     #[test]

@@ -32,6 +32,10 @@ pub enum SyntaxKind {
     FnKw,
     IfKw,
     ElseKw,
+    TrueKw,
+    FalseKw,
+    DataKw,
+    MatchKw,
     Identifier,
     Integer,
 
