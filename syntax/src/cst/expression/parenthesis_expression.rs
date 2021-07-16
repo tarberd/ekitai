@@ -1,7 +1,4 @@
-use super::{
-    super::{raw::SyntaxNode, CstNode, SyntaxToAstError},
-    Expression,
-};
+use crate::cst::{raw::SyntaxNode, CstNode, Expression, SyntaxToAstError};
 use parser::SyntaxKind;
 
 #[derive(Debug)]

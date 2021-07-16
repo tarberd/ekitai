@@ -13,6 +13,8 @@ pub enum TokenKind {
     Comma,
     #[token(":")]
     Colon,
+    #[token("::")]
+    DoubleColon,
     #[token(";")]
     SemiColon,
     #[token("(")]
@@ -50,7 +52,9 @@ pub enum TokenKind {
     #[token("<=")]
     LessEquals,
     #[token("->")]
-    Arrow,
+    ThinArrow,
+    #[token("=>")]
+    FatArrow,
     #[token("fn")]
     FnKw,
     #[token("if")]
@@ -61,8 +65,8 @@ pub enum TokenKind {
     TrueKw,
     #[token("false")]
     FalseKw,
-    #[token("data")]
-    DataKw,
+    #[token("type")]
+    TypeKw,
     #[token("match")]
     MatchKw,
     #[regex("[[:alpha:]_][[:word:]]*")]
@@ -147,6 +151,11 @@ mod tests {
     #[test]
     fn lex_collon() {
         check(":", TokenKind::Colon);
+    }
+
+    #[test]
+    fn lex_doublecollon() {
+        check("::", TokenKind::DoubleColon);
     }
 
     #[test]
@@ -241,7 +250,12 @@ mod tests {
 
     #[test]
     fn lex_arrow() {
-        check("->", TokenKind::Arrow);
+        check("->", TokenKind::ThinArrow);
+    }
+
+    #[test]
+    fn lex_fat_arrow() {
+        check("=>", TokenKind::FatArrow);
     }
 
     #[test]
@@ -270,8 +284,8 @@ mod tests {
     }
 
     #[test]
-    fn lex_data() {
-        check("data", TokenKind::DataKw);
+    fn lex_type() {
+        check("type", TokenKind::TypeKw);
     }
 
     #[test]

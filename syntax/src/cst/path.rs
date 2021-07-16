@@ -1,42 +1,42 @@
-use crate::cst::{raw::SyntaxNode, CstNode, Expression, SyntaxToAstError};
+use super::{raw::SyntaxNode, CstNode, NameReference, SyntaxToAstError};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
-pub struct CallExpression(pub(super) SyntaxNode);
+pub struct Path(SyntaxNode);
 
-impl CstNode for CallExpression {
+impl CstNode for Path {
     fn as_syntax_node(&self) -> &SyntaxNode {
         &self.0
     }
 }
 
-impl CallExpression {
+impl Path {
     fn syntax_kind() -> SyntaxKind {
-        SyntaxKind::CallExpression
+        SyntaxKind::Path
     }
 
-    pub fn callee(&self) -> Option<Expression> {
+    pub fn path_segment(&self) -> Option<PathSegment> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .find_map(|s| Expression::try_from(s).ok())
+            .find_map(|n| PathSegment::try_from(n).ok())
     }
 
-    pub fn argument_list(&self) -> Option<ArgumentList> {
+    pub fn path(&self) -> Option<Path> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .find_map(|s| ArgumentList::try_from(s).ok())
+            .find_map(|n| Path::try_from(n).ok())
     }
 }
 
-impl std::fmt::Display for CallExpression {
+impl std::fmt::Display for Path {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for CallExpression {
+impl std::convert::TryFrom<SyntaxNode> for Path {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -48,33 +48,34 @@ impl std::convert::TryFrom<SyntaxNode> for CallExpression {
 }
 
 #[derive(Debug)]
-pub struct ArgumentList(SyntaxNode);
+pub struct PathSegment(SyntaxNode);
 
-impl CstNode for ArgumentList {
+impl CstNode for PathSegment {
     fn as_syntax_node(&self) -> &SyntaxNode {
         &self.0
     }
 }
 
-impl ArgumentList {
+impl PathSegment {
     fn syntax_kind() -> SyntaxKind {
-        SyntaxKind::ArgumentList
+        SyntaxKind::PathSegment
     }
 
-    pub fn arguments(&self) -> impl Iterator<Item = Expression> {
+    pub fn name_reference(&self) -> Option<NameReference> {
         use std::convert::TryFrom;
-        let mut children = self.as_syntax_node().children();
-        std::iter::from_fn(move || children.by_ref().find_map(|n| Expression::try_from(n).ok()))
+        self.as_syntax_node()
+            .children()
+            .find_map(|n| NameReference::try_from(n).ok())
     }
 }
 
-impl std::fmt::Display for ArgumentList {
+impl std::fmt::Display for PathSegment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for ArgumentList {
+impl std::convert::TryFrom<SyntaxNode> for PathSegment {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

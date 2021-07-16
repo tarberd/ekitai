@@ -8,8 +8,11 @@ SourceFile@0..25
       OpenParenthesis@15..16 "("
       CloseParenthesis@16..17 ")"
     Whitespace@17..18 " "
-    Arrow@18..20 "->"
+    ThinArrow@18..20 "->"
     Whitespace@20..21 " "
-    NameReference@21..25
-      Identifier@21..25 "tipo"
+    PathType@21..25
+      Path@21..25
+        PathSegment@21..25
+          NameReference@21..25
+            Identifier@21..25 "tipo"
 At 21..25: expected OpenBraces

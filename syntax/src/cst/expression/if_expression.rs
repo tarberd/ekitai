@@ -1,7 +1,4 @@
-use super::{
-    super::{raw::SyntaxNode, CstNode, SyntaxToAstError},
-    Expression,
-};
+use crate::cst::{raw::SyntaxNode, CstNode, Expression, SyntaxToAstError};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
@@ -18,7 +15,7 @@ impl IfExpression {
         SyntaxKind::IfExpression
     }
 
-    pub fn contidion(&self) -> Option<Expression> {
+    pub fn condition(&self) -> Option<Expression> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
@@ -58,4 +55,3 @@ impl std::convert::TryFrom<SyntaxNode> for IfExpression {
         }
     }
 }
-

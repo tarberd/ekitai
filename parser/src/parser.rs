@@ -37,9 +37,11 @@ impl<Source: TokenSource> Parser<Source> {
     }
 
     pub(crate) fn nth_at(&self, n: usize, kind: SyntaxKind) -> bool {
-        self.token_source
-            .lookahead(n)
-            .map_or(false, |token| token == kind)
+        self.nth(n).map_or(false, |token| token == kind)
+    }
+
+    pub(crate) fn nth(&self, n: usize) -> Option<SyntaxKind> {
+        self.token_source.lookahead(n)
     }
 
     pub(crate) fn start(&mut self) -> Marker {

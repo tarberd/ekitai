@@ -1,6 +1,5 @@
-use super::{raw::SyntaxNode, token::Identifier, CstNode, SyntaxToAstError};
+use super::{raw::SyntaxNode, CstNode, Identifier, SyntaxToAstError};
 use parser::SyntaxKind;
-use std::{convert::TryFrom, fmt::Display};
 
 #[derive(Debug)]
 pub struct Name(SyntaxNode);
@@ -17,6 +16,7 @@ impl Name {
     }
 
     pub fn identifier(&self) -> Identifier {
+        use std::convert::TryFrom;
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
@@ -25,13 +25,13 @@ impl Name {
     }
 }
 
-impl Display for Name {
+impl std::fmt::Display for Name {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self.as_syntax_node(), f)
+        std::fmt::Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl TryFrom<SyntaxNode> for Name {
+impl std::convert::TryFrom<SyntaxNode> for Name {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

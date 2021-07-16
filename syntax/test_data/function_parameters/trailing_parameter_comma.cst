@@ -7,19 +7,26 @@ SourceFile@0..72
     ParameterList@6..17
       OpenParenthesis@6..7 "("
       Parameter@7..15
-        Name@7..10
-          Identifier@7..10 "one"
+        IdentifierPattern@7..10
+          Name@7..10
+            Identifier@7..10 "one"
         Colon@10..11 ":"
         Whitespace@11..12 " "
-        NameReference@12..15
-          Identifier@12..15 "tt1"
+        PathType@12..15
+          Path@12..15
+            PathSegment@12..15
+              NameReference@12..15
+                Identifier@12..15 "tt1"
       Comma@15..16 ","
       CloseParenthesis@16..17 ")"
     Whitespace@17..18 " "
-    Arrow@18..20 "->"
+    ThinArrow@18..20 "->"
     Whitespace@20..21 " "
-    NameReference@21..23
-      Identifier@21..23 "id"
+    PathType@21..23
+      Path@21..23
+        PathSegment@21..23
+          NameReference@21..23
+            Identifier@21..23 "id"
     Whitespace@23..24 " "
     BlockExpression@24..29
       OpenBraces@24..25 "{"
@@ -37,28 +44,39 @@ SourceFile@0..72
     ParameterList@36..59
       OpenParenthesis@36..37 "("
       Parameter@37..45
-        Name@37..40
-          Identifier@37..40 "two"
+        IdentifierPattern@37..40
+          Name@37..40
+            Identifier@37..40 "two"
         Colon@40..41 ":"
         Whitespace@41..42 " "
-        NameReference@42..45
-          Identifier@42..45 "tt2"
+        PathType@42..45
+          Path@42..45
+            PathSegment@42..45
+              NameReference@42..45
+                Identifier@42..45 "tt2"
       Comma@45..46 ","
       Whitespace@46..47 " "
       Parameter@47..57
-        Name@47..52
-          Identifier@47..52 "three"
+        IdentifierPattern@47..52
+          Name@47..52
+            Identifier@47..52 "three"
         Colon@52..53 ":"
         Whitespace@53..54 " "
-        NameReference@54..57
-          Identifier@54..57 "tt3"
+        PathType@54..57
+          Path@54..57
+            PathSegment@54..57
+              NameReference@54..57
+                Identifier@54..57 "tt3"
       Comma@57..58 ","
       CloseParenthesis@58..59 ")"
     Whitespace@59..60 " "
-    Arrow@60..62 "->"
+    ThinArrow@60..62 "->"
     Whitespace@62..63 " "
-    NameReference@63..66
-      Identifier@63..66 "i32"
+    PathType@63..66
+      Path@63..66
+        PathSegment@63..66
+          NameReference@63..66
+            Identifier@63..66 "i32"
     Whitespace@66..67 " "
     BlockExpression@67..72
       OpenBraces@67..68 "{"

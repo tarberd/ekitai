@@ -1,10 +1,5 @@
-use super::function::Function;
-use super::raw::SyntaxNode;
-use super::CstNode;
-use super::SyntaxToAstError;
+use super::{CstNode, ModuleItem, SyntaxToAstError, raw::SyntaxNode};
 use parser::SyntaxKind;
-use std::convert::TryFrom;
-use std::fmt::Display;
 
 #[derive(Debug)]
 pub struct SourceFile(SyntaxNode);
@@ -16,10 +11,11 @@ impl CstNode for SourceFile {
 }
 
 impl SourceFile {
-    pub fn functions(&self) -> impl Iterator<Item = Function> {
+    pub fn module_items(&self) -> impl Iterator<Item = ModuleItem> {
+        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .filter_map(|s| Function::try_from(s).ok())
+            .filter_map(|s| ModuleItem::try_from(s).ok())
     }
 
     fn syntax_kind() -> SyntaxKind {
@@ -27,13 +23,13 @@ impl SourceFile {
     }
 }
 
-impl Display for SourceFile {
+impl std::fmt::Display for SourceFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self.as_syntax_node(), f)
+        std::fmt::Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl TryFrom<SyntaxNode> for SourceFile {
+impl std::convert::TryFrom<SyntaxNode> for SourceFile {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

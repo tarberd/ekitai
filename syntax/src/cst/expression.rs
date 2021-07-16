@@ -1,56 +1,60 @@
-mod argument_list;
 mod block_expression;
 mod call_expression;
 mod if_expression;
 mod infix_expression;
 mod literal;
+mod match_expression;
 mod parenthesis_expression;
+mod path_expression;
 mod prefix_expression;
 
-pub use argument_list::ArgumentList;
 pub use block_expression::BlockExpression;
-pub use call_expression::CallExpression;
+pub use call_expression::{ArgumentList, CallExpression};
 pub use if_expression::IfExpression;
 pub use infix_expression::InfixExpression;
 pub use literal::Literal;
+pub use match_expression::{MatchCase, MatchCaseList, MatchExpression};
 pub use parenthesis_expression::ParenthesisExpression;
+pub use path_expression::PathExpression;
 pub use prefix_expression::PrefixExpression;
 
-use super::{raw::SyntaxNode, CstNode, NameReference, SyntaxToAstError};
+use super::{raw::SyntaxNode, CstNode, SyntaxToAstError};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
 pub enum Expression {
-    BlockExpression(BlockExpression),
     Literal(Literal),
-    NameReference(NameReference),
+    PathExpression(PathExpression),
+    BlockExpression(BlockExpression),
     InfixExpression(InfixExpression),
     PrefixExpression(PrefixExpression),
     ParenthesisExpression(ParenthesisExpression),
     CallExpression(CallExpression),
     IfExpression(IfExpression),
+    MatchExpression(MatchExpression),
 }
 
 impl Expression {
     fn try_from_set() -> &'static [SyntaxKind] {
         static KINDS: &[SyntaxKind] = &[
-            SyntaxKind::BlockExpression,
             SyntaxKind::Literal,
-            SyntaxKind::NameReference,
+            SyntaxKind::PathExpression,
+            SyntaxKind::BlockExpression,
             SyntaxKind::InfixExpression,
             SyntaxKind::PrefixExpression,
             SyntaxKind::ParenthesisExpression,
             SyntaxKind::CallExpression,
             SyntaxKind::IfExpression,
+            SyntaxKind::MatchExpression,
         ];
         &KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {
         match raw.kind() {
-            SyntaxKind::BlockExpression => Self::BlockExpression(BlockExpression(raw)),
             SyntaxKind::Literal => Self::Literal(Literal(raw)),
-            SyntaxKind::NameReference => Self::NameReference(NameReference(raw)),
+            SyntaxKind::PathExpression => Self::PathExpression(PathExpression(raw)),
+            SyntaxKind::BlockExpression => Self::BlockExpression(BlockExpression(raw)),
             SyntaxKind::InfixExpression => Self::InfixExpression(InfixExpression(raw)),
             SyntaxKind::PrefixExpression => Self::PrefixExpression(PrefixExpression(raw)),
             SyntaxKind::ParenthesisExpression => {
@@ -58,6 +62,7 @@ impl Expression {
             }
             SyntaxKind::CallExpression => Self::CallExpression(CallExpression(raw)),
             SyntaxKind::IfExpression => Self::IfExpression(IfExpression(raw)),
+            SyntaxKind::MatchExpression => Self::MatchExpression(MatchExpression(raw)),
             _ => panic!(),
         }
     }
@@ -68,12 +73,13 @@ impl CstNode for Expression {
         match self {
             Expression::BlockExpression(e) => e.as_syntax_node(),
             Expression::Literal(e) => e.as_syntax_node(),
-            Expression::NameReference(e) => e.as_syntax_node(),
+            Expression::PathExpression(e) => e.as_syntax_node(),
             Expression::InfixExpression(e) => e.as_syntax_node(),
             Expression::PrefixExpression(e) => e.as_syntax_node(),
             Expression::ParenthesisExpression(e) => e.as_syntax_node(),
             Expression::CallExpression(e) => e.as_syntax_node(),
             Expression::IfExpression(e) => e.as_syntax_node(),
+            Expression::MatchExpression(e) => e.as_syntax_node(),
         }
     }
 }

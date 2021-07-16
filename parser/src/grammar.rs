@@ -10,26 +10,51 @@ pub(crate) fn parse_root<S: TokenSource>(p: &mut Parser<S>) {
 
     while p.current().is_some() {
         if p.at(FnKw) {
-            parse_function(p)
+            parse_function_definition(p)
+        } else if p.at(TypeKw) {
+            parse_type_definition(p)
         }
     }
     m.complete(p, SourceFile);
 }
 
-fn parse_function<S: TokenSource>(p: &mut Parser<S>) {
-    assert!(p.at(FnKw));
+fn parse_type_definition<S: TokenSource>(p: &mut Parser<S>) {
+    assert!(p.at(TypeKw));
+    let m = p.start();
+    p.bump();
+    parse_name(p);
+    parse_type_constructors(p);
+    m.complete(p, TypeDefinition);
+}
+
+fn parse_type_constructors<S: TokenSource>(p: &mut Parser<S>) {
+    assert!(p.at(OpenBraces));
+
     let m = p.start();
     p.bump();
 
+    while !p.at(CloseBraces) && p.current() != None {
+        let m = p.start();
+        parse_name(p);
+        m.complete(p, ValueConstructor);
+        if p.at(Comma) {
+            p.bump();
+        }
+    }
+
+    p.expect(CloseBraces);
+    m.complete(p, ValueConstructorList);
+}
+
+fn parse_function_definition<S: TokenSource>(p: &mut Parser<S>) {
+    assert!(p.at(FnKw));
+    let m = p.start();
+    p.bump();
     parse_name(p);
-
     parse_function_parameters(p);
-    p.expect(Arrow);
-
-    parse_name_reference(p);
-
+    p.expect(ThinArrow);
+    parse_type(p);
     parse_block_expression(p);
-
     m.complete(p, FunctionDefinition);
 }
 
@@ -55,11 +80,33 @@ fn parse_function_parameters<S: TokenSource>(p: &mut Parser<S>) {
     }
 }
 
+fn parse_pattern<S: TokenSource>(p: &mut Parser<S>) {
+    match p.current() {
+        Some(Identifier) => match p.nth(1) {
+            Some(DoubleColon) => parse_path_pattern(p),
+            _ => parse_identifier_pattern(p),
+        },
+        x => panic!("try to parse pattern but found {:?}", x),
+    }
+}
+
+fn parse_path_pattern<S: TokenSource>(p: &mut Parser<S>) {
+    let m = p.start();
+    parse_path(p);
+    m.complete(p, PathPattern);
+}
+
+fn parse_identifier_pattern<S: TokenSource>(p: &mut Parser<S>) {
+    let m = p.start();
+    p.expect(Identifier);
+    m.complete(p, IdentifierPattern);
+}
+
 fn parse_parameter<S: TokenSource>(p: &mut Parser<S>) {
     let m = p.start();
-    parse_name(p);
+    parse_pattern(p);
     p.expect(Colon);
-    parse_name_reference(p);
+    parse_type(p);
     m.complete(p, Parameter);
 }
 
@@ -81,6 +128,41 @@ fn parse_name_reference<S: TokenSource>(p: &mut Parser<S>) {
     } else {
         p.error(ParseError::new(Identifier, p.current()));
     }
+}
+
+fn parse_path_segment<S: TokenSource>(p: &mut Parser<S>) {
+    let m = p.start();
+    match p.current() {
+        Some(Identifier) => parse_name_reference(p),
+        x => p.error(ParseError::new(Identifier, x)),
+    }
+    m.complete(p, PathSegment);
+}
+
+fn parse_path<S: TokenSource>(p: &mut Parser<S>) {
+    let m = p.start();
+    parse_path_segment(p);
+    let mut qualifier = m.complete(p, Path);
+    while p.at(DoubleColon) {
+        let path = qualifier.precede(p);
+        p.bump();
+        parse_path_segment(p);
+        let path = path.complete(p, Path);
+        qualifier = path;
+    }
+}
+
+fn parse_type<S: TokenSource>(p: &mut Parser<S>) {
+    if p.at(Identifier) {
+        parse_path_type(p)
+    }
+}
+
+fn parse_path_type<S: TokenSource>(p: &mut Parser<S>) {
+    assert!(p.at(Identifier));
+    let m = p.start();
+    parse_path(p);
+    m.complete(p, PathType);
 }
 
 fn parse_block_expression<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
@@ -202,7 +284,7 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
     let lhs = if p.at(Integer) {
         literal(p)
     } else if p.at(Identifier) {
-        name_reference(p)
+        path_expression(p)
     } else if p.at(Minus) {
         prefix_expression(p)
     } else if p.at(OpenParenthesis) {
@@ -211,6 +293,8 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
         parse_block_expression(p).unwrap()
     } else if p.at(IfKw) {
         if_expression(p)
+    } else if p.at(MatchKw) {
+        match_expression(p)
     } else {
         p.error(ParseError::new(Integer, p.current()));
         p.error(ParseError::new(Identifier, p.current()));
@@ -265,12 +349,10 @@ fn literal<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
     m.complete(p, SyntaxKind::Literal)
 }
 
-fn name_reference<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
-    assert!(p.at(Identifier));
-
+fn path_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
     let m = p.start();
-    p.bump();
-    m.complete(p, NameReference)
+    parse_path(p);
+    m.complete(p, PathExpression)
 }
 
 fn prefix_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
@@ -309,4 +391,32 @@ fn if_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
     p.bump();
     parse_block_expression(p);
     m.complete(p, IfExpression)
+}
+
+fn match_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
+    assert!(p.at(MatchKw));
+    let m = p.start();
+    p.bump();
+    parse_name_reference(p);
+    parse_match_case_list(p);
+    m.complete(p, MatchExpression)
+}
+
+fn parse_match_case_list<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
+    let m = p.start();
+    p.expect(OpenBraces);
+
+    while !p.at(CloseBraces) && p.current() != None {
+        let m = p.start();
+        parse_pattern(p);
+        p.expect(FatArrow);
+        expression(p);
+        m.complete(p, MatchCase);
+        if p.at(Comma) {
+            p.bump();
+        }
+    }
+    p.expect(CloseBraces);
+
+    m.complete(p, MatchCaseList)
 }
