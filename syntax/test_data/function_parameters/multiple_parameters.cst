@@ -7,53 +7,77 @@ SourceFile@0..53
     ParameterList@8..32
       OpenParenthesis@8..9 "("
       Parameter@9..15
-        Name@9..10
-          Identifier@9..10 "a"
+        IdentifierPattern@9..10
+          Name@9..10
+            Identifier@9..10 "a"
         Colon@10..11 ":"
         Whitespace@11..12 " "
-        NameReference@12..15
-          Identifier@12..15 "i32"
+        PathType@12..15
+          Path@12..15
+            PathSegment@12..15
+              NameReference@12..15
+                Identifier@12..15 "i32"
       Comma@15..16 ","
       Whitespace@16..17 " "
       Parameter@17..23
-        Name@17..18
-          Identifier@17..18 "b"
+        IdentifierPattern@17..18
+          Name@17..18
+            Identifier@17..18 "b"
         Colon@18..19 ":"
         Whitespace@19..20 " "
-        NameReference@20..23
-          Identifier@20..23 "i32"
+        PathType@20..23
+          Path@20..23
+            PathSegment@20..23
+              NameReference@20..23
+                Identifier@20..23 "i32"
       Comma@23..24 ","
       Whitespace@24..25 " "
       Parameter@25..31
-        Name@25..26
-          Identifier@25..26 "c"
+        IdentifierPattern@25..26
+          Name@25..26
+            Identifier@25..26 "c"
         Colon@26..27 ":"
         Whitespace@27..28 " "
-        NameReference@28..31
-          Identifier@28..31 "i32"
+        PathType@28..31
+          Path@28..31
+            PathSegment@28..31
+              NameReference@28..31
+                Identifier@28..31 "i32"
       CloseParenthesis@31..32 ")"
     Whitespace@32..33 " "
-    Arrow@33..35 "->"
+    ThinArrow@33..35 "->"
     Whitespace@35..36 " "
-    NameReference@36..39
-      Identifier@36..39 "i32"
+    PathType@36..39
+      Path@36..39
+        PathSegment@36..39
+          NameReference@36..39
+            Identifier@36..39 "i32"
     Whitespace@39..40 " "
     BlockExpression@40..53
       OpenBraces@40..41 "{"
       Whitespace@41..42 " "
       InfixExpression@42..51
         InfixExpression@42..47
-          NameReference@42..43
-            Identifier@42..43 "a"
+          PathExpression@42..43
+            Path@42..43
+              PathSegment@42..43
+                NameReference@42..43
+                  Identifier@42..43 "a"
           Whitespace@43..44 " "
           Plus@44..45 "+"
           Whitespace@45..46 " "
-          NameReference@46..47
-            Identifier@46..47 "b"
+          PathExpression@46..47
+            Path@46..47
+              PathSegment@46..47
+                NameReference@46..47
+                  Identifier@46..47 "b"
         Whitespace@47..48 " "
         Plus@48..49 "+"
         Whitespace@49..50 " "
-        NameReference@50..51
-          Identifier@50..51 "c"
+        PathExpression@50..51
+          Path@50..51
+            PathSegment@50..51
+              NameReference@50..51
+                Identifier@50..51 "c"
       Whitespace@51..52 " "
       CloseBraces@52..53 "}"

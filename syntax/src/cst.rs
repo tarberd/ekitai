@@ -1,27 +1,33 @@
 mod expression;
 mod function;
+mod module_item;
 mod name;
 mod name_ref;
-mod parameter;
-mod parameter_list;
+mod path;
+mod pattern;
 pub mod raw;
 mod source_file;
 mod token;
+mod ty;
+mod type_definition;
 
 pub use expression::{
-    BlockExpression, CallExpression, Expression, IfExpression, InfixExpression, Literal,
-    PrefixExpression,
+    BlockExpression, CallExpression, Expression, IfExpression, InfixExpression, Literal, MatchCase,
+    MatchCaseList, MatchExpression, PrefixExpression,
 };
-pub use function::Function;
+pub use function::{Function, Parameter, ParameterList};
+pub use module_item::ModuleItem;
 pub use name::Name;
 pub use name_ref::NameReference;
-pub use parameter::Parameter;
-pub use parameter_list::ParameterList;
+pub use path::{Path, PathSegment};
+pub use pattern::{IdentifierPattern, PathPattern, Pattern};
 pub use source_file::SourceFile;
 pub use token::{
     Asterisk, BinaryOperator, Identifier, Integer, LiteralKind, Minus, Percent, Plus, Slash,
     UnaryOperator,
 };
+pub use ty::{PathType, Type};
+pub use type_definition::{TypeDefinition, ValueConstructor, ValueConstructorList};
 
 use parser::SyntaxKind;
 use raw::{SyntaxNode, SyntaxToken};

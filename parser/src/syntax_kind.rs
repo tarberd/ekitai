@@ -1,15 +1,18 @@
 use num_derive::{FromPrimitive, ToPrimitive};
 
 /// SyntaxKind means a token or node kind of the ekitai grammar, without structure.
-/// This is a set of all syntatic category and is equivalent to the nodes and leaves in a syntax tree but only holds its kind.
+/// This is a set of all syntatic categories and is equivalent to the nodes and leaves in a syntax tree but only holds its kind.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum SyntaxKind {
+    /// root node
     SourceFile,
 
+    // leaf nodes(lexical tokens)
     Whitespace,
     Comment,
     Comma,
     Colon,
+    DoubleColon,
     SemiColon,
     OpenParenthesis,
     CloseParenthesis,
@@ -28,33 +31,57 @@ pub enum SyntaxKind {
     LessEquals,
     Greater,
     GreaterEquals,
-    Arrow,
+    ThinArrow,
+    FatArrow,
     FnKw,
     IfKw,
     ElseKw,
     TrueKw,
     FalseKw,
-    DataKw,
+    TypeKw,
     MatchKw,
     Identifier,
     Integer,
 
-    FunctionDefinition,
-    ParameterList,
-    Parameter,
-    Name,
+    // Types
+    PathType,
 
-    NameReference,
+    // Patterns
+    /// A Path type destructor (e.g. some::path::to::type)
+    PathPattern,
+    IdentifierPattern,
+
+    // Module Items
+    TypeDefinition,
+    FunctionDefinition,
+
+    // Expressions
     Literal,
+    PathExpression,
     BlockExpression,
     PrefixExpression,
     InfixExpression,
     ParenthesisExpression,
     CallExpression,
     IfExpression,
+    MatchExpression,
+
+    // intermidiate nodes
+    Name,
+    NameReference,
+    Path,
+    PathSegment,
+    ValueConstructor,
+    ValueConstructorList,
+    Parameter,
+    ParameterList,
+    MatchCase,
+    MatchCaseList,
     ArgumentList,
 
+    /// parser error node
     Error,
+    /// placeholder
     Placeholder,
 }
 

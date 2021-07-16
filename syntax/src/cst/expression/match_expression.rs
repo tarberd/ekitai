@@ -1,56 +1,42 @@
-use super::{BlockExpression, CstNode, Name, Pattern, SyntaxToAstError, Type, raw::SyntaxNode};
+use crate::cst::{raw::SyntaxNode, CstNode, Expression, NameReference, SyntaxToAstError};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
-pub struct Function(pub(super) SyntaxNode);
+pub struct MatchExpression(pub(super) SyntaxNode);
 
-impl CstNode for Function {
+impl CstNode for MatchExpression {
     fn as_syntax_node(&self) -> &SyntaxNode {
         &self.0
     }
 }
 
-impl Function {
+impl MatchExpression {
     fn syntax_kind() -> SyntaxKind {
-        SyntaxKind::FunctionDefinition
+        SyntaxKind::MatchExpression
     }
 
-    pub fn name(&self) -> Option<Name> {
+    pub fn matchee(&self) -> Option<Expression> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .find_map(|n| Name::try_from(n).ok())
+            .find_map(|s| Expression::try_from(s).ok())
     }
 
-    pub fn parameter_list(&self) -> Option<ParameterList> {
+    pub fn case_list(&self) -> Option<MatchCaseList> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .find_map(|n| ParameterList::try_from(n).ok())
-    }
-
-    pub fn return_type(&self) -> Option<Type> {
-        use std::convert::TryFrom;
-        self.as_syntax_node()
-            .children()
-            .find_map(|n| Type::try_from(n).ok())
-    }
-
-    pub fn body(&self) -> Option<BlockExpression> {
-        use std::convert::TryFrom;
-        self.as_syntax_node()
-            .children()
-            .find_map(|r| BlockExpression::try_from(r).ok())
+            .find_map(|s| MatchCaseList::try_from(s).ok())
     }
 }
 
-impl std::fmt::Display for Function {
+impl std::fmt::Display for MatchExpression {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Function {
+impl std::convert::TryFrom<SyntaxNode> for MatchExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -62,33 +48,33 @@ impl std::convert::TryFrom<SyntaxNode> for Function {
 }
 
 #[derive(Debug)]
-pub struct ParameterList(SyntaxNode);
+pub struct MatchCaseList(SyntaxNode);
 
-impl CstNode for ParameterList {
+impl CstNode for MatchCaseList {
     fn as_syntax_node(&self) -> &SyntaxNode {
         &self.0
     }
 }
 
-impl ParameterList {
+impl MatchCaseList {
     fn syntax_kind() -> SyntaxKind {
-        SyntaxKind::ParameterList
+        SyntaxKind::MatchCaseList
     }
 
-    pub fn parameters(&self) -> impl Iterator<Item = Parameter> {
+    pub fn cases(&self) -> impl Iterator<Item = MatchCase> {
         use std::convert::TryFrom;
         let mut children = self.as_syntax_node().children();
-        std::iter::from_fn(move || children.by_ref().find_map(|n| Parameter::try_from(n).ok()))
+        std::iter::from_fn(move || children.by_ref().find_map(|n| MatchCase::try_from(n).ok()))
     }
 }
 
-impl std::fmt::Display for ParameterList {
+impl std::fmt::Display for MatchCaseList {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for ParameterList {
+impl std::convert::TryFrom<SyntaxNode> for MatchCaseList {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -100,41 +86,42 @@ impl std::convert::TryFrom<SyntaxNode> for ParameterList {
 }
 
 #[derive(Debug)]
-pub struct Parameter(SyntaxNode);
+pub struct MatchCase(SyntaxNode);
 
-impl CstNode for Parameter {
+impl CstNode for MatchCase {
     fn as_syntax_node(&self) -> &SyntaxNode {
         &self.0
     }
 }
 
-impl Parameter {
+impl MatchCase {
     fn syntax_kind() -> SyntaxKind {
-        SyntaxKind::Parameter
+        SyntaxKind::MatchCase
     }
 
-    pub fn pattern(&self) -> Option<Pattern> {
+    pub fn pattern(&self) -> Option<NameReference> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .find_map(|n| Pattern::try_from(n).ok())
+            .find_map(|s| NameReference::try_from(s).ok())
     }
 
-    pub fn type_(&self) -> Option<Type> {
+    pub fn expression(&self) -> Option<Expression> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .find_map(|n| Type::try_from(n).ok())
+            .filter_map(|s| Expression::try_from(s).ok())
+            .nth(1)
     }
 }
 
-impl std::fmt::Display for Parameter {
+impl std::fmt::Display for MatchCase {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Parameter {
+impl std::convert::TryFrom<SyntaxNode> for MatchCase {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

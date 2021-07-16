@@ -6,6 +6,7 @@ use expect_test::{expect, expect_file, Expect};
 mod empty;
 mod expressions;
 mod function_parameters;
+mod type_definitions;
 
 fn crate_root() -> PathBuf {
     let dir = env!("CARGO_MANIFEST_DIR");
