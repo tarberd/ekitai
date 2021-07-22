@@ -1,10 +1,11 @@
 mod expression;
-mod function;
+mod function_definition;
 mod module_item;
 mod name;
 mod name_ref;
 mod path;
 mod pattern;
+pub mod pointer;
 pub mod raw;
 mod source_file;
 mod token;
@@ -15,7 +16,7 @@ pub use expression::{
     BlockExpression, CallExpression, Expression, IfExpression, InfixExpression, Literal, MatchCase,
     MatchCaseList, MatchExpression, PrefixExpression,
 };
-pub use function::{Function, Parameter, ParameterList};
+pub use function_definition::{FunctionDefinition, Parameter, ParameterList};
 pub use module_item::ModuleItem;
 pub use name::Name;
 pub use name_ref::NameReference;

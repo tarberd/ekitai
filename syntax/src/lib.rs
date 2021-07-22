@@ -7,15 +7,15 @@ mod tests;
 
 use crate::parser::SyntaxError;
 use cst::raw::SyntaxNode;
-use cst::{SourceFile, Expression};
+use cst::{Expression, SourceFile};
 use rowan::GreenNode;
 use std::marker::PhantomData;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parse<T: cst::CstNode> {
     green_node: GreenNode,
     errors: Vec<SyntaxError>,
-    _cst_type: PhantomData<T>,
+    _cst_node_type: PhantomData<T>,
 }
 
 impl<T: cst::CstNode> Parse<T> {
@@ -23,7 +23,7 @@ impl<T: cst::CstNode> Parse<T> {
         Self {
             green_node,
             errors,
-            _cst_type: PhantomData,
+            _cst_node_type: PhantomData,
         }
     }
 

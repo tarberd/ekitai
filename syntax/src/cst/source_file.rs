@@ -1,7 +1,7 @@
-use super::{CstNode, ModuleItem, SyntaxToAstError, raw::SyntaxNode};
+use super::{raw::SyntaxNode, CstNode, ModuleItem, SyntaxToAstError};
 use parser::SyntaxKind;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceFile(SyntaxNode);
 
 impl CstNode for SourceFile {
