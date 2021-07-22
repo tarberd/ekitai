@@ -1,6 +1,6 @@
 use crate::{
-    BinaryOperator, Body, Expression, ExpressionId, FunctionId, IntegerKind, Literal, Module,
-    NameId, TypeReference,
+    BinaryOperator, Body, Expression, ExpressionId, FunctionId, IntegerKind, Literal, FileDefinitions, Name,
+    NameId, TypeId, TypeReference, ValueConstructor, ValueConstructorId,
 };
 
 use la_arena::ArenaMap;
@@ -16,18 +16,8 @@ pub enum Type {
     Boolean,
     Integer(IntegerType),
     Function(Vec<Type>, Box<Type>),
+    Custom(Name),
     Unknown,
-}
-
-impl Type {
-    fn from(type_reference: &TypeReference) -> Self {
-        let TypeReference { id } = type_reference;
-        match id.as_str() {
-            "i32" => Type::Integer(IntegerType::I32),
-            "i64" => Type::Integer(IntegerType::I64),
-            _ => Type::Unknown,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -38,44 +28,79 @@ pub enum IntegerType {
 
 pub struct ModuleTypeMap {
     pub function_to_type: ArenaMap<FunctionId, Type>,
+    pub type_to_type: ArenaMap<TypeId, Type>,
+    pub ctors_to_type: ArenaMap<ValueConstructorId, Type>,
+    pub type_to_ctors: ArenaMap<TypeId, Vec<ValueConstructor>>,
 }
 
 impl ModuleTypeMap {
-    pub fn new(module: &Module) -> Self {
+    pub fn new(module: &FileDefinitions) -> Self {
+        let mut type_to_type = ArenaMap::default();
+        let mut ctors_to_type = ArenaMap::default();
+        let mut type_to_ctors = ArenaMap::default();
+        for (ctor_id, type_id) in module.ctors_to_type.iter() {
+            let hir_type = &module.types[*type_id];
+            let ty = Type::Custom(hir_type.name.clone());
+            type_to_type.insert(*type_id, ty.clone());
+            ctors_to_type.insert(ctor_id, ty);
+            type_to_ctors.insert(*type_id, hir_type.value_constructors.clone());
+        }
+
         let function_to_type = module.functions.iter().fold(
             ArenaMap::default(),
             |mut function_to_type, (fid, function)| {
                 let parameter_types = function.parameter_types.iter().fold(
                     Vec::new(),
                     |mut parameter_types, type_reference| {
-                        parameter_types.push(Type::from(type_reference));
+                        let (ty_id, _) = module
+                            .types
+                            .iter()
+                            .find(|(_, ctor)| ctor.name.id == type_reference.id)
+                            .expect(&format!("cant find type with name {:?}", type_reference.id));
+                        let ty = type_to_type[ty_id].clone();
+                        parameter_types.push(ty);
                         parameter_types
                     },
                 );
-                let return_type = Type::from(&function.return_type);
-                function_to_type
-                    .insert(fid, Type::Function(parameter_types, Box::new(return_type)));
+                let (ty_id, _) = module
+                    .types
+                    .iter()
+                    .find(|(_, ctor)| ctor.name.id == function.return_type.id)
+                    .unwrap();
+                let ty = type_to_type[ty_id].clone();
+                function_to_type.insert(fid, Type::Function(parameter_types, Box::new(ty)));
                 function_to_type
             },
         );
-        Self { function_to_type }
+        Self {
+            function_to_type,
+            type_to_type,
+            ctors_to_type,
+            type_to_ctors,
+        }
     }
 }
 
 pub struct ExpressionScopes {}
 
+#[derive(Debug)]
 pub struct BodyTypeMap {
     pub type_of_expression: ArenaMap<ExpressionId, Type>,
     pub type_of_name: ArenaMap<NameId, Type>,
 }
 
 impl BodyTypeMap {
-    pub fn new(module: &Module, module_map: &ModuleTypeMap, body: &Body) -> Self {
+    pub fn new(module: &FileDefinitions, module_map: &ModuleTypeMap, body: &Body) -> Self {
         let type_of_name = body.parameters.iter().fold(
             ArenaMap::default(),
             |mut type_of_name, (name, typeref)| {
                 let typeref = &body.types[*typeref];
-                let ty = Type::from(typeref);
+                let (ty_id, _) = module
+                    .types
+                    .iter()
+                    .find(|(_, ctor)| ctor.name.id == typeref.id)
+                    .unwrap();
+                let ty = module_map.type_to_type[ty_id].clone();
                 type_of_name.insert(name, ty);
                 type_of_name
             },
@@ -92,12 +117,12 @@ impl BodyTypeMap {
 
     fn collect_expression_type(
         mut body_type_map: BodyTypeMap,
-        module: &Module,
+        module: &FileDefinitions,
         module_map: &ModuleTypeMap,
         body: &Body,
         expr_id: ExpressionId,
     ) -> (BodyTypeMap, Type) {
-        let expr = &body.expressions[expr_id];
+        let expr = dbg!(&body.expressions[expr_id]);
         match expr {
             Expression::BlockExpression(block) => {
                 let (mut body_type_map, ty) = Self::collect_expression_type(
@@ -180,11 +205,24 @@ impl BodyTypeMap {
                             body_type_map.type_of_expression.insert(expr_id, ty.clone());
                             (body_type_map, ty)
                         }
-                        None => panic!(),
+                        None => match module
+                            .ctors
+                            .iter()
+                            .find(|(_, ctor)| ctor.name.id == name.id)
+                        {
+                            Some((id, _)) => {
+                                let ty = module_map.ctors_to_type[id].clone();
+                                body_type_map.type_of_expression.insert(expr_id, ty.clone());
+                                println!("yay {:?} {:?}", name, ty);
+                                (body_type_map, ty)
+                            }
+                            None => panic!("cant find name {}", name.id),
+                        },
                     },
                 }
             }
             Expression::Call(call) => {
+                print!("asdhflakshdf");
                 let (body_type_map, callee_ty) = Self::collect_expression_type(
                     body_type_map,
                     module,
@@ -196,6 +234,7 @@ impl BodyTypeMap {
                     Type::Function(args, ret) => (args, *ret),
                     x => panic!("cally type is not a function. {:?}", x),
                 };
+                println!("arguments_ty {:?}", arguments_ty);
                 let mut body_type_map =
                     call.arguments
                         .iter()
@@ -209,12 +248,7 @@ impl BodyTypeMap {
                                 *arg_id,
                             );
 
-                            let ty = if ty == Type::Unknown {
-                                arg_ty.clone()
-                            } else {
-                                ty
-                            };
-
+                            println!("ty {:?} argty {:?}", ty, arg_ty);
                             if ty != arg_ty {
                                 panic!("mismatch type of function call argument. Exprected {:?} but found {:?}.", arg_ty, ty);
                             }
@@ -268,6 +302,53 @@ impl BodyTypeMap {
                     .type_of_expression
                     .insert(expr_id, than_ty.clone());
                 (body_type_map, than_ty)
+            }
+            Expression::MatchExpression(match_expr) => {
+                // todo matchee
+                let (body_type_map, matchee_type) = Self::collect_expression_type(
+                    body_type_map,
+                    module,
+                    module_map,
+                    body,
+                    match_expr.matchee,
+                );
+
+                // let match_ctors = module_map.type_to_ctors
+                match_expr.cases.iter().map(|case| {
+                    // let r = case.pattern;
+
+                    // module_map.ctors_to_type[]
+                });
+
+                // todo cases
+                let (mut body_type_map, types) = match_expr.cases.iter().fold(
+                    (body_type_map, vec![]),
+                    |(body_type_map, mut types), case| {
+                        let (body_type_map, ty) = Self::collect_expression_type(
+                            body_type_map,
+                            module,
+                            module_map,
+                            body,
+                            case.expression,
+                        );
+                        types.push(ty);
+                        (body_type_map, types)
+                    },
+                );
+
+                let match_type = types
+                    .get(0)
+                    .unwrap_or_else(|| panic!("match expression has no type"));
+                let all_cases_same_type = types.iter().all(|ty| ty == match_type);
+
+                if !all_cases_same_type {
+                    panic!()
+                };
+
+                body_type_map
+                    .type_of_expression
+                    .insert(expr_id, match_type.clone());
+                (body_type_map, match_type.clone())
             }
         }
     }

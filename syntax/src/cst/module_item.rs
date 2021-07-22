@@ -1,16 +1,16 @@
-use super::{raw::SyntaxNode, CstNode, Function, SyntaxToAstError, TypeDefinition};
+use super::{raw::SyntaxNode, CstNode, FunctionDefinition, SyntaxToAstError, TypeDefinition};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
 pub enum ModuleItem {
-    Function(Function),
+    FunctionDefinition(FunctionDefinition),
     TypeDefinition(TypeDefinition),
 }
 
 impl CstNode for ModuleItem {
     fn as_syntax_node(&self) -> &SyntaxNode {
         match self {
-            ModuleItem::Function(f) => f.as_syntax_node(),
+            ModuleItem::FunctionDefinition(f) => f.as_syntax_node(),
             ModuleItem::TypeDefinition(t) => t.as_syntax_node(),
         }
     }
@@ -24,7 +24,7 @@ impl ModuleItem {
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {
         match raw.kind() {
-            SyntaxKind::FunctionDefinition => Self::Function(Function(raw)),
+            SyntaxKind::FunctionDefinition => Self::FunctionDefinition(FunctionDefinition(raw)),
             SyntaxKind::TypeDefinition => Self::TypeDefinition(TypeDefinition(raw)),
             _ => panic!(),
         }

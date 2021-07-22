@@ -5,6 +5,5 @@ members = [
     "parser",
     "syntax",
     "hir",
-    "codegen",
     "ekitai",
 ]

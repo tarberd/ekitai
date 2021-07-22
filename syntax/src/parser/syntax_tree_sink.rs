@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::slice::Iter;
 use text_size::TextRange;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SyntaxError {
     pub error: ParseError,
     pub range: TextRange,

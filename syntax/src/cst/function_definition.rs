@@ -1,16 +1,16 @@
 use super::{BlockExpression, CstNode, Name, Pattern, SyntaxToAstError, Type, raw::SyntaxNode};
 use parser::SyntaxKind;
 
-#[derive(Debug)]
-pub struct Function(pub(super) SyntaxNode);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionDefinition(pub(super) SyntaxNode);
 
-impl CstNode for Function {
+impl CstNode for FunctionDefinition {
     fn as_syntax_node(&self) -> &SyntaxNode {
         &self.0
     }
 }
 
-impl Function {
+impl FunctionDefinition {
     fn syntax_kind() -> SyntaxKind {
         SyntaxKind::FunctionDefinition
     }
@@ -44,13 +44,13 @@ impl Function {
     }
 }
 
-impl std::fmt::Display for Function {
+impl std::fmt::Display for FunctionDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Display::fmt(self.as_syntax_node(), f)
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Function {
+impl std::convert::TryFrom<SyntaxNode> for FunctionDefinition {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -120,7 +120,7 @@ impl Parameter {
             .find_map(|n| Pattern::try_from(n).ok())
     }
 
-    pub fn type_(&self) -> Option<Type> {
+    pub fn ty(&self) -> Option<Type> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()

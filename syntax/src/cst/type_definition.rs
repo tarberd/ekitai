@@ -1,7 +1,7 @@
 use super::{raw::SyntaxNode, CstNode, Name, SyntaxToAstError};
 use parser::SyntaxKind;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeDefinition(pub(super) SyntaxNode);
 
 impl CstNode for TypeDefinition {
