@@ -475,7 +475,7 @@ impl TypeReference {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
-    parameters_and_return: Vec<Type>,
+    pub parameters_and_return: Vec<Type>,
 }
 
 pub struct Resolver {}
