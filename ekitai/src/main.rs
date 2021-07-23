@@ -1,13 +1,27 @@
+use hir::{HirDatabase, Upcast};
 use std::fs;
 use std::path::PathBuf;
 
 #[salsa::database(
     hir::SourceDatabaseStorage,
+    hir::InternDatabaseStorage,
     hir::DefinitionsDatabaseStorage,
-    hir::InternDatabaseStorage
+    hir::HirDatabaseStorage
 )]
 pub struct Database {
     storage: salsa::Storage<Self>,
+}
+
+impl Upcast<dyn hir::SourceDatabase> for Database {
+    fn upcast(&self) -> &(dyn hir::SourceDatabase + 'static) {
+        &*self
+    }
+}
+
+impl Upcast<dyn hir::DefinitionsDatabase> for Database {
+    fn upcast(&self) -> &(dyn hir::DefinitionsDatabase + 'static) {
+        &*self
+    }
 }
 
 impl salsa::Database for Database {}
@@ -33,18 +47,15 @@ fn main() {
     }
 }
 
-use hir::DefinitionsDatabase;
-fn drive(db: &mut dyn DefinitionsDatabase, source: String) {
+fn drive(db: &mut dyn HirDatabase, source: String) {
     db.set_source_file_text(source);
-    let str = db.source_file_text();
-    println!("{}", str);
 
-    let parse = db.source_file_parse();
-    println!("{}", parse.debug_dump());
-    println!("Syntax Errors: {:#?}", parse.errors());
+    let item_tree = db.source_file_item_tree();
 
-    let file_defs = db.source_file_item_tree();
-    println!("{:#?}", file_defs);
+    for (id, f) in item_tree.functions.iter() {
+        let fn_sig =
+            db.function_definition_signature(db.intern_function(hir::FunctionLocation { id }));
 
-    let _cst_node_map = db.source_file_cst_id_map();
+        println!("{:?} \n sig: {:?}", f, fn_sig)
+    }
 }
