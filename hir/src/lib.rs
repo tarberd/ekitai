@@ -6,6 +6,10 @@ use syntax::{
     Parse,
 };
 
+pub trait Upcast<T: ?Sized> {
+    fn upcast(&self) -> &T;
+}
+
 #[salsa::query_group(SourceDatabaseStorage)]
 pub trait SourceDatabase {
     #[salsa::input]
@@ -35,7 +39,7 @@ pub trait InternDatabase {
     fn intern_type(&self, loc: TypeLocation) -> TypeLocationId;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FunctionLocationId(salsa::InternId);
 
 impl salsa::InternKey for FunctionLocationId {
@@ -48,7 +52,7 @@ impl salsa::InternKey for FunctionLocationId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeLocationId(salsa::InternId);
 
 impl salsa::InternKey for TypeLocationId {
@@ -72,14 +76,16 @@ pub struct TypeLocation {
 }
 
 #[salsa::query_group(DefinitionsDatabaseStorage)]
-pub trait DefinitionsDatabase: SourceDatabase + InternDatabase {
+pub trait DefinitionsDatabase:
+    SourceDatabase + InternDatabase + Upcast<dyn SourceDatabase>
+{
     fn source_file_item_tree(&self) -> ItemTree;
 
     fn source_file_definitions_map(&self) -> DefinitionsMap;
 
     fn function_definition_data(&self, id: FunctionLocationId) -> FunctionDefinitionData;
 
-    // fn type_definition_data(&self, id: TypeLocationId) -> TypeDefinitionData;
+    fn type_definition_data(&self, id: TypeLocationId) -> TypeDefinitionData;
 }
 
 fn source_file_item_tree(def_db: &dyn DefinitionsDatabase) -> ItemTree {
@@ -143,37 +149,88 @@ fn source_file_definitions_map(def_db: &dyn DefinitionsDatabase) -> DefinitionsM
     DefinitionsMap { item_scope }
 }
 
-fn function_definition_data(db: &dyn DefinitionsDatabase, id: FunctionLocationId) -> FunctionDefinitionData {
+fn function_definition_data(
+    db: &dyn DefinitionsDatabase,
+    id: FunctionLocationId,
+) -> FunctionDefinitionData {
     let loc = db.lookup_intern_function(id);
+    let item_tree = db.source_file_item_tree();
+    let FunctionDefinition {
+        name,
+        parameter_types,
+        return_type,
+        ..
+    } = item_tree.functions[loc.id].clone();
 
-    todo!()
+    FunctionDefinitionData {
+        name,
+        parameter_types,
+        return_type,
+    }
+}
+
+fn type_definition_data(db: &dyn DefinitionsDatabase, id: TypeLocationId) -> TypeDefinitionData {
+    let loc = db.lookup_intern_type(id);
+    let item_tree = db.source_file_item_tree();
+    let TypeDefinition {
+        name,
+        value_constructors,
+        ..
+    } = item_tree.types[loc.id].clone();
+
+    TypeDefinitionData {
+        name,
+        value_constructors,
+    }
 }
 
 #[salsa::query_group(HirDatabaseStorage)]
-pub trait HirDatabase: DefinitionsDatabase {
+pub trait HirDatabase: DefinitionsDatabase + Upcast<dyn DefinitionsDatabase> {
+    fn type_of_definition(&self, definition: TypableDefinitionId) -> Type;
 
-    fn type_of_definition(&self, definition: TypableDefinitionId) -> TypeKind;
-
-    fn type_of_value(&self, id: TypableValueDefinitionId) -> TypeKind;
+    fn type_of_value(&self, id: TypableValueDefinitionId) -> Type;
 
     // fn value_constructor_filds(&self, id: ValueConstructorId) -> ArenaMap<FildId, TypeKind>;
 
-    // fn signature_of_callable(&self, ) -> FunctionSignature;
+    fn function_definition_signature(&self, function: FunctionLocationId) -> FunctionSignature;
 }
 
-fn type_of_definition(_db: &dyn HirDatabase, definition: TypableDefinitionId) -> TypeKind {
+fn type_of_definition(_db: &dyn HirDatabase, definition: TypableDefinitionId) -> Type {
     match definition {
-        TypableDefinitionId::Type(type_def_location) => {
-            TypeKind::AbstractDataType(type_def_location)
+        TypableDefinitionId::Type(type_def_location) => Type::AbstractDataType(type_def_location),
+    }
+}
+
+fn type_of_value(_db: &dyn HirDatabase, value: TypableValueDefinitionId) -> Type {
+    match value {
+        TypableValueDefinitionId::Function(function_location_id) => {
+            Type::FunctionDefinition(function_location_id)
         }
     }
 }
 
-fn type_of_value(_db: &dyn HirDatabase, value: TypableValueDefinitionId) -> TypeKind {
-    match value {
-        TypableValueDefinitionId::Function(function_location_id) => {
-            TypeKind::FunctionDefinition(function_location_id)
-        },
+fn function_definition_signature(
+    db: &dyn HirDatabase,
+    function_id: FunctionLocationId,
+) -> FunctionSignature {
+    let resolver = Resolver::new_for_function(db, function_id);
+    let function = db.function_definition_data(function_id);
+
+    let params = function
+        .parameter_types
+        .iter()
+        .map(|type_reference| match type_reference {
+            TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
+        });
+
+    let parameters_and_return = params
+        .chain([match &function.return_type {
+            TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
+        }])
+        .collect();
+
+    FunctionSignature {
+        parameters_and_return,
     }
 }
 
@@ -248,9 +305,21 @@ pub enum TypableValueDefinitionId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TypeKind {
+pub enum Type {
     AbstractDataType(TypeLocationId),
     FunctionDefinition(FunctionLocationId),
+    Scalar(ScalarType),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScalarType {
+    Int(IntKind),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntKind {
+    I32,
+    I64,
 }
 
 pub type TypeDefinitionId = Idx<TypeDefinition>;
@@ -260,6 +329,12 @@ pub struct TypeDefinition {
     pub name: Name,
     pub value_constructors: Vec<ValueConstructor>,
     pub cst_id: CstId<cst::TypeDefinition>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeDefinitionData {
+    pub name: Name,
+    pub value_constructors: Vec<ValueConstructor>,
 }
 
 impl TypeDefinition {
@@ -302,7 +377,9 @@ pub struct FunctionDefinition {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDefinitionData {
-
+    pub name: Name,
+    pub parameter_types: Vec<TypeReference>,
+    pub return_type: TypeReference,
 }
 
 impl FunctionDefinition {
@@ -351,6 +428,12 @@ impl Name {
             id: name.identifier().text().into(),
         }
     }
+
+    const fn new_inline(name: &str) -> Self {
+        Self {
+            id: SmolStr::new_inline(name),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -389,3 +472,55 @@ impl TypeReference {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionSignature {
+    parameters_and_return: Vec<Type>,
+}
+
+pub struct Resolver {}
+
+impl Resolver {
+    pub fn new_empty() -> Self {
+        Resolver {}
+    }
+
+    pub fn new_root_resolver(db: &dyn HirDatabase) -> Self {
+        Resolver::new_empty()
+    }
+
+    pub fn new_for_function(db: &dyn HirDatabase, fid: FunctionLocationId) -> Self {
+        Self::new_root_resolver(db)
+    }
+
+    pub fn resolve_path_as_type(&self, db: &dyn DefinitionsDatabase, path: &Path) -> Type {
+        let def_map = db.source_file_definitions_map();
+
+        let mut segments = path.segments.iter();
+        let type_name = segments.next().unwrap();
+        def_map
+            .item_scope
+            .types
+            .get(type_name)
+            .map(|loc| match loc {
+                LocationId::FunctionLocationId(_) => panic!(),
+                LocationId::TypeLocationId(type_loc) => Type::AbstractDataType(*type_loc),
+            })
+            .or(BUILTIN_SCOPE
+                .iter()
+                .find_map(|(name, ty)| if name == type_name { Some(ty) } else { None })
+                .cloned())
+            .unwrap()
+    }
+}
+
+static BUILTIN_SCOPE: &[(Name, Type)] = &[
+    (
+        Name::new_inline("i32"),
+        Type::Scalar(ScalarType::Int(IntKind::I32)),
+    ),
+    (
+        Name::new_inline("i64"),
+        Type::Scalar(ScalarType::Int(IntKind::I64)),
+    ),
+];
