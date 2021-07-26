@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::PathBuf;
-
 fn main() {
     let args: Vec<_> = std::env::args().into_iter().map(PathBuf::from).collect();
 
