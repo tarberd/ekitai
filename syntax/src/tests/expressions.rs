@@ -693,8 +693,11 @@ fn match_expression() {
             MatchExpression@0..43
               MatchKw@0..5 "match"
               Whitespace@5..6 " "
-              NameReference@6..15
-                Identifier@6..15 "something"
+              PathExpression@6..15
+                Path@6..15
+                  PathSegment@6..15
+                    NameReference@6..15
+                      Identifier@6..15 "something"
               Whitespace@15..16 " "
               MatchCaseList@16..43
                 OpenBraces@16..17 "{"
@@ -721,8 +724,11 @@ fn match_expression_multiple_case() {
             MatchExpression@0..68
               MatchKw@0..5 "match"
               Whitespace@5..6 " "
-              NameReference@6..15
-                Identifier@6..15 "something"
+              PathExpression@6..15
+                Path@6..15
+                  PathSegment@6..15
+                    NameReference@6..15
+                      Identifier@6..15 "something"
               Whitespace@15..16 " "
               MatchCaseList@16..68
                 OpenBraces@16..17 "{"

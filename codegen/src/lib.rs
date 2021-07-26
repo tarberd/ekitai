@@ -1,6 +1,9 @@
-use hir::{DefinitionsDatabase, HirDatabase, InternDatabase, SourceDatabase, Upcast};
-use inkwell::context::Context;
-use std::{collections::HashMap, hash::Hash};
+use hir::{HirDatabase, SourceDatabase, Type, TypeLocationId, Upcast};
+use inkwell::{
+    context::Context,
+    types::{BasicType, BasicTypeEnum, StructType},
+};
+use std::collections::HashMap;
 
 #[salsa::database(
     hir::SourceDatabaseStorage,
@@ -8,6 +11,7 @@ use std::{collections::HashMap, hash::Hash};
     hir::DefinitionsDatabaseStorage,
     hir::HirDatabaseStorage
 )]
+#[derive(Default)]
 pub struct Database {
     storage: salsa::Storage<Self>,
 }
@@ -26,43 +30,27 @@ impl Upcast<dyn hir::DefinitionsDatabase> for Database {
 
 impl salsa::Database for Database {}
 
-impl Database {
-    pub fn new() -> Self {
-        Self {
-            storage: salsa::Storage::default(),
-        }
+fn inkwell_basic_type<'ink>(
+    context: &'ink Context,
+    type_map: &HashMap<TypeLocationId, StructType<'ink>>,
+    ty: &Type,
+) -> BasicTypeEnum<'ink> {
+    match ty {
+        Type::AbstractDataType(id) => type_map[id].into(),
+        Type::FunctionDefinition(_id) => todo!(),
+        Type::Scalar(scalar) => match scalar {
+            hir::ScalarType::Int(int_kind) => match int_kind {
+                hir::IntKind::I32 => context.i32_type().into(),
+                hir::IntKind::I64 => context.i64_type().into(),
+            },
+        },
     }
 }
 
-// fn inkwell_basic_type<'ink>(context: &'ink Context, ty: &Type) -> BasicTypeEnum<'ink> {
-//     match ty {
-//         Type::Integer(IntegerType::I32) => context.i32_type().into(),
-//         Type::Integer(IntegerType::I64) => context.i64_type().into(),
-//         Type::Boolean => context.bool_type().into(),
-//         Type::Function(_, _) => panic!("trying to lower function type"),
-//         Type::Unknown => panic!("trying to lower unknown type"),
-//         _ => panic!(),
-//     }
-// }
-
-// fn inkwell_generate_function_type<'ink>(context: &'ink Context, ty: &Type) -> FunctionType<'ink> {
-//     match ty {
-//         Type::Function(parameters, return_ty) => {
-//             let parameter_types: Vec<_> = parameters
-//                 .iter()
-//                 .map(|ty| inkwell_basic_type(context, ty))
-//                 .collect();
-//             let return_type = inkwell_basic_type(context, return_ty);
-//             return_type.fn_type(parameter_types.as_slice(), false)
-//         }
-//         _ => panic!("trying to lower non function type to llvm function"),
-//     }
-// }
-
 pub fn compile_text(source: String) {
-    let mut db = Database::new();
+    let mut db = Database::default();
 
-    db.set_source_file_text(source.clone());
+    db.set_source_file_text(source);
 
     build_assembly_ir(&db)
 }
@@ -70,7 +58,7 @@ pub fn compile_text(source: String) {
 pub fn build_assembly_ir(db: &dyn HirDatabase) {
     let context = Context::create();
     let llvm_module = context.create_module("ekitai_module");
-    let builder = context.create_builder();
+    let _builder = context.create_builder();
 
     let mut type_map = HashMap::new();
 
@@ -82,11 +70,13 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
             hir::LocationId::TypeLocationId(ty_id) => {
                 let ty = db.type_definition_data(*ty_id);
                 let sty = context.opaque_struct_type(ty.name.id.as_str());
-                sty.set_body(&[context.i8_type().into()], false);
+                sty.set_body(&[context.i128_type().into(); 3], false);
                 type_map.insert(*ty_id, sty);
             }
         };
     }
+
+    let mut function_map = HashMap::new();
 
     for id in def_map.item_scope.definitions.iter() {
         match id {
@@ -94,18 +84,16 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
                 let fun = db.function_definition_data(*f_id);
                 let sig = db.function_definition_signature(*f_id);
 
-                let return_ty = sig.parameters_and_return.last().unwrap();
+                let param_tys = sig
+                    .parameter_types
+                    .iter()
+                    .map(|ty| inkwell_basic_type(&context, &type_map, ty));
 
-                let ret_ty = match return_ty {
-                    hir::Type::AbstractDataType(id) => {
-                        type_map[id]
-                    }
-                    hir::Type::FunctionDefinition(_) => todo!(),
-                    hir::Type::Scalar(_) => todo!(),
-                };
+                let ret_ty = inkwell_basic_type(&context, &type_map, &sig.return_type);
 
-                let llfty = context.void_type().fn_type(&[ret_ty.into()], false);
-
+                let param_tys: Vec<_> = param_tys.collect();
+                let llfty = ret_ty.fn_type(&param_tys, false);
+                function_map.insert(*f_id, llfty);
                 llvm_module.add_function(fun.name.id.as_str(), llfty, None);
             }
             hir::LocationId::TypeLocationId(_) => continue,

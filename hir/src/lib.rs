@@ -216,21 +216,21 @@ fn function_definition_signature(
     let resolver = Resolver::new_for_function(db, function_id);
     let function = db.function_definition_data(function_id);
 
-    let params = function
+    let parameter_types = function
         .parameter_types
         .iter()
         .map(|type_reference| match type_reference {
             TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
-        });
-
-    let parameters_and_return = params
-        .chain([match &function.return_type {
-            TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
-        }])
+        })
         .collect();
 
+    let return_type = match &function.return_type {
+        TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
+    };
+
     FunctionSignature {
-        parameters_and_return,
+        parameter_types,
+        return_type,
     }
 }
 
@@ -475,7 +475,8 @@ impl TypeReference {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
-    pub parameters_and_return: Vec<Type>,
+    pub parameter_types: Vec<Type>,
+    pub return_type: Type,
 }
 
 pub struct Resolver {}
@@ -485,11 +486,11 @@ impl Resolver {
         Resolver {}
     }
 
-    pub fn new_root_resolver(db: &dyn HirDatabase) -> Self {
+    pub fn new_root_resolver(_db: &dyn HirDatabase) -> Self {
         Resolver::new_empty()
     }
 
-    pub fn new_for_function(db: &dyn HirDatabase, fid: FunctionLocationId) -> Self {
+    pub fn new_for_function(db: &dyn HirDatabase, _fid: FunctionLocationId) -> Self {
         Self::new_root_resolver(db)
     }
 
@@ -506,10 +507,12 @@ impl Resolver {
                 LocationId::FunctionLocationId(_) => panic!(),
                 LocationId::TypeLocationId(type_loc) => Type::AbstractDataType(*type_loc),
             })
-            .or(BUILTIN_SCOPE
-                .iter()
-                .find_map(|(name, ty)| if name == type_name { Some(ty) } else { None })
-                .cloned())
+            .or_else(|| {
+                BUILTIN_SCOPE
+                    .iter()
+                    .find_map(|(name, ty)| if name == type_name { Some(ty) } else { None })
+                    .cloned()
+            })
             .unwrap()
     }
 }

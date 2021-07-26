@@ -98,7 +98,7 @@ fn parse_path_pattern<S: TokenSource>(p: &mut Parser<S>) {
 
 fn parse_identifier_pattern<S: TokenSource>(p: &mut Parser<S>) {
     let m = p.start();
-    p.expect(Identifier);
+    parse_name(p);
     m.complete(p, IdentifierPattern);
 }
 
@@ -397,7 +397,7 @@ fn match_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
     assert!(p.at(MatchKw));
     let m = p.start();
     p.bump();
-    parse_name_reference(p);
+    expression(p);
     parse_match_case_list(p);
     m.complete(p, MatchExpression)
 }
