@@ -1,6 +1,6 @@
 use la_arena::{Arena, Idx};
 use smol_str::SmolStr;
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, convert::TryFrom, marker::PhantomData};
 use syntax::{
     cst::{self, raw::SyntaxNodePointer, CstNode},
     Parse,
@@ -83,6 +83,8 @@ pub trait DefinitionsDatabase:
 
     fn source_file_definitions_map(&self) -> DefinitionsMap;
 
+    fn body_of_definition(&self, def: FunctionLocationId) -> Body;
+
     fn function_definition_data(&self, id: FunctionLocationId) -> FunctionDefinitionData;
 
     fn type_definition_data(&self, id: TypeLocationId) -> TypeDefinitionData;
@@ -147,6 +149,22 @@ fn source_file_definitions_map(def_db: &dyn DefinitionsDatabase) -> DefinitionsM
     };
 
     DefinitionsMap { item_scope }
+}
+
+fn body_of_definition(db: &dyn DefinitionsDatabase, id: FunctionLocationId) -> Body {
+    let source_file = db.source_file_parse();
+    let cst_map = db.source_file_cst_id_map();
+    let package_defs = db.source_file_item_tree();
+    let location = db.lookup_intern_function(id);
+
+    let fun_def = &package_defs.functions[location.id];
+    let source = &cst_map.arena[fun_def.cst_node_id.cst_id];
+    let function_syntax_node = source.get_syntax_node(&source_file.syntax_node());
+    let function_cst_node = cst::FunctionDefinition::try_from(function_syntax_node)
+        .ok()
+        .unwrap();
+
+    Body::lower(function_cst_node)
 }
 
 fn function_definition_data(
@@ -313,11 +331,11 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScalarType {
-    Int(IntKind),
+    Integer(IntegerKind),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum IntKind {
+pub enum IntegerKind {
     I32,
     I64,
 }
@@ -411,6 +429,312 @@ impl FunctionDefinition {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Body {
+    pub patterns: Arena<Pattern>,
+    pub types: Arena<TypeReference>,
+    pub parameter_bindings: Vec<(PatternId, TypeReferenceId)>,
+    pub return_type: TypeReference,
+    pub expressions: Arena<Expression>,
+    pub root_expression: ExpressionId,
+}
+
+impl Body {
+    pub fn lower(function: cst::FunctionDefinition) -> Self {
+        let params = function
+            .parameter_list()
+            .unwrap()
+            .parameters()
+            .map(|param| {
+                (
+                    Pattern::lower(param.pattern().unwrap()),
+                    TypeReference::lower(param.ty().unwrap()),
+                )
+            });
+
+        let mut patterns = Arena::default();
+        let mut types = Arena::default();
+        let mut parameter_bindings = Vec::new();
+
+        for (pattern, ty) in params {
+            let pattern_id = patterns.alloc(pattern);
+            let ty_id = types.alloc(ty);
+            parameter_bindings.push((pattern_id, ty_id));
+        }
+
+        let return_type = function.return_type().map(TypeReference::lower).unwrap();
+
+        let (expressions, root_expression) =
+            Self::collect_block_expression(Arena::default(), function.body().unwrap());
+
+        Self {
+            patterns,
+            types,
+            parameter_bindings,
+            return_type,
+            expressions,
+            root_expression,
+        }
+    }
+
+    fn collect_expression(
+        expressions: Arena<Expression>,
+        expression: cst::Expression,
+    ) -> (Arena<Expression>, ExpressionId) {
+        match expression {
+            cst::Expression::Literal(literal) => {
+                Self::collect_literal_expression(expressions, literal)
+            }
+            cst::Expression::PathExpression(_) => todo!(),
+            cst::Expression::BlockExpression(block) => {
+                Self::collect_block_expression(expressions, block)
+            }
+            cst::Expression::InfixExpression(infix) => {
+                Self::collect_infix_expression(expressions, infix)
+            }
+            cst::Expression::PrefixExpression(prefix) => {
+                Self::collect_prefix_expression(expressions, prefix)
+            }
+            cst::Expression::ParenthesisExpression(paren) => {
+                Self::collect_expression(expressions, paren.inner_expression().unwrap())
+            }
+            cst::Expression::CallExpression(_) => todo!(),
+            cst::Expression::IfExpression(if_expr) => {
+                Self::collect_if_expression(expressions, if_expr)
+            }
+            cst::Expression::MatchExpression(_) => todo!(),
+        }
+    }
+
+    fn collect_block_expression(
+        expressions: Arena<Expression>,
+        block: cst::BlockExpression,
+    ) -> (Arena<Expression>, ExpressionId) {
+        let (mut expressions, trailing_expression) = Self::collect_expression(
+            expressions,
+            block
+                .tail_expression()
+                .expect("missing tail expression from block"),
+        );
+        let expr = Expression::Block {
+            trailing_expression,
+        };
+        let id = expressions.alloc(expr);
+        (expressions, id)
+    }
+
+    fn collect_infix_expression(
+        expressions: Arena<Expression>,
+        infix: cst::InfixExpression,
+    ) -> (Arena<Expression>, ExpressionId) {
+        let (expressions, lhs) = Self::collect_expression(
+            expressions,
+            infix.lhs().expect("missing lhs from infix expression"),
+        );
+        let (mut expressions, rhs) = Self::collect_expression(
+            expressions,
+            infix.rhs().expect("missing rhs from infix expression"),
+        );
+
+        let op = match infix
+            .operator()
+            .expect("missing operator from infix expression")
+        {
+            cst::BinaryOperator::Asterisk(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Mul),
+            cst::BinaryOperator::Plus(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Add),
+            cst::BinaryOperator::Minus(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Sub),
+            cst::BinaryOperator::Slash(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Div),
+            cst::BinaryOperator::Percent(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Rem),
+            cst::BinaryOperator::DoubleEquals(_) => {
+                BinaryOperator::Compare(CompareOperator::Equality { negated: false })
+            }
+            cst::BinaryOperator::ExclamationEquals(_) => {
+                BinaryOperator::Compare(CompareOperator::Equality { negated: true })
+            }
+            cst::BinaryOperator::Less(_) => BinaryOperator::Compare(CompareOperator::Order {
+                ordering: Ordering::Less,
+                strict: true,
+            }),
+            cst::BinaryOperator::LessEquals(_) => BinaryOperator::Compare(CompareOperator::Order {
+                ordering: Ordering::Less,
+                strict: false,
+            }),
+            cst::BinaryOperator::Greater(_) => BinaryOperator::Compare(CompareOperator::Order {
+                ordering: Ordering::Greater,
+                strict: true,
+            }),
+            cst::BinaryOperator::GreaterEquals(_) => {
+                BinaryOperator::Compare(CompareOperator::Order {
+                    ordering: Ordering::Greater,
+                    strict: false,
+                })
+            }
+        };
+
+        let bin_expr = Expression::Binary(op, lhs, rhs);
+        let id = expressions.alloc(bin_expr);
+        (expressions, id)
+    }
+
+    fn collect_prefix_expression(
+        expressions: Arena<Expression>,
+        prefix: cst::PrefixExpression,
+    ) -> (Arena<Expression>, ExpressionId) {
+        let (mut expressions, inner) = Self::collect_expression(
+            expressions,
+            prefix
+                .inner()
+                .expect("missing inner expression from prefix expression"),
+        );
+
+        let op = match prefix
+            .operator()
+            .expect("missing operator from infix expression")
+        {
+            cst::UnaryOperator::Minus(_) => UnaryOperator::Minus,
+        };
+
+        let unary_expr = Expression::Unary(op, inner);
+        let id = expressions.alloc(unary_expr);
+        (expressions, id)
+    }
+
+    fn collect_if_expression(
+        expressions: Arena<Expression>,
+        if_expr: cst::IfExpression,
+    ) -> (Arena<Expression>, ExpressionId) {
+        let (expressions, condition) =
+            Self::collect_expression(expressions, if_expr.condition().unwrap());
+        let (expressions, then_branch) =
+            Self::collect_expression(expressions, if_expr.then_branch().unwrap());
+        let (mut expressions, else_branch) =
+            Self::collect_expression(expressions, if_expr.else_branch().unwrap());
+
+        let id = expressions.alloc(Expression::If {
+            condition,
+            then_branch,
+            else_branch,
+        });
+
+        (expressions, id)
+    }
+
+    fn collect_literal_expression(
+        mut expressions: Arena<Expression>,
+        literal: cst::Literal,
+    ) -> (Arena<Expression>, ExpressionId) {
+        let literal = match literal.literal_kind() {
+            cst::LiteralKind::Integer(integer) => {
+                let (radical, suffix) = integer.radical_and_suffix();
+
+                let kind = match suffix {
+                    Some("i32") => Some(IntegerKind::I32),
+                    Some("i64") => Some(IntegerKind::I64),
+                    Some(_invalid_suffix) => None,
+                    None => None,
+                };
+
+                let value = match radical
+                    .chars()
+                    .filter(|c| *c != '_')
+                    .collect::<String>()
+                    .parse::<u128>()
+                    .ok()
+                {
+                    Some(value) => match kind {
+                        None => value,
+                        Some(IntegerKind::I32) => value,
+                        Some(IntegerKind::I64) => value,
+                    },
+                    None => {
+                        // larger than u128
+                        0
+                    }
+                };
+
+                Literal::Integer(value, kind)
+            }
+        };
+
+        let literal = Expression::Literal(literal);
+        let id = expressions.alloc(literal);
+        (expressions, id)
+    }
+}
+
+pub type PatternId = Idx<Pattern>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pattern {
+    Path(Path),
+    Bind(Name),
+}
+
+impl Pattern {
+    pub fn lower(pattern: cst::Pattern) -> Self {
+        match pattern {
+            cst::Pattern::PathPattern(pat) => Self::Path(Path::lower(pat.path().unwrap())),
+            cst::Pattern::IdentifierPattern(pat) => Self::Bind(Name::lower(pat.name().unwrap())),
+        }
+    }
+}
+
+pub type ExpressionId = Idx<Expression>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expression {
+    Block {
+        trailing_expression: ExpressionId,
+    },
+    If {
+        condition: ExpressionId,
+        then_branch: ExpressionId,
+        else_branch: ExpressionId,
+    },
+    Binary(BinaryOperator, ExpressionId, ExpressionId),
+    Unary(UnaryOperator, ExpressionId),
+    Literal(Literal),
+    Path(Path),
+    Call,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Literal {
+    Integer(u128, Option<IntegerKind>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BinaryOperator {
+    Arithmetic(ArithmeticOperator),
+    Compare(CompareOperator),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArithmeticOperator {
+    Add,
+    Sub,
+    Div,
+    Mul,
+    Rem,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CompareOperator {
+    Equality { negated: bool },
+    Order { ordering: Ordering, strict: bool },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ordering {
+    Less,
+    Greater,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnaryOperator {
+    Minus,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     pub id: SmolStr,
@@ -459,6 +783,8 @@ impl Path {
         }
     }
 }
+
+pub type TypeReferenceId = Idx<TypeReference>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeReference {
@@ -520,10 +846,10 @@ impl Resolver {
 static BUILTIN_SCOPE: &[(Name, Type)] = &[
     (
         Name::new_inline("i32"),
-        Type::Scalar(ScalarType::Int(IntKind::I32)),
+        Type::Scalar(ScalarType::Integer(IntegerKind::I32)),
     ),
     (
         Name::new_inline("i64"),
-        Type::Scalar(ScalarType::Int(IntKind::I64)),
+        Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
     ),
 ];

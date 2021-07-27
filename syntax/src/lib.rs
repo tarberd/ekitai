@@ -27,7 +27,7 @@ impl<T: cst::CstNode> Parse<T> {
         }
     }
 
-    fn syntax_node(&self) -> SyntaxNode {
+    pub fn syntax_node(&self) -> SyntaxNode {
         SyntaxNode::new_root(self.green_node.clone())
     }
 

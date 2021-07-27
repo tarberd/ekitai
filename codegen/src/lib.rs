@@ -39,9 +39,9 @@ fn inkwell_basic_type<'ink>(
         Type::AbstractDataType(id) => type_map[id].into(),
         Type::FunctionDefinition(_id) => todo!(),
         Type::Scalar(scalar) => match scalar {
-            hir::ScalarType::Int(int_kind) => match int_kind {
-                hir::IntKind::I32 => context.i32_type().into(),
-                hir::IntKind::I64 => context.i64_type().into(),
+            hir::ScalarType::Integer(int_kind) => match int_kind {
+                hir::IntegerKind::I32 => context.i32_type().into(),
+                hir::IntegerKind::I64 => context.i64_type().into(),
             },
         },
     }
@@ -102,50 +102,4 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
 
     println!("{}", llvm_module.print_to_string().to_string());
     let _ = llvm_module.print_to_file("out.ll");
-
-    // let function_map =
-    //     module
-    //         .functions
-    //         .iter()
-    //         .fold(HashMap::new(), |mut function_map, (id, function)| {
-    //             let ftype = &module_type_map.function_to_type[id];
-    //             let ftype = inkwell_generate_function_type(&context, &ftype);
-    //             let function = llvm_module.add_function(&function.name.id, ftype, None);
-    //             function_map.insert(id, function);
-    //             function_map
-    //         });
-
-    // for (fid, function) in module.functions.iter() {
-    //     let llfunction = function_map[&fid];
-    //     let llbody = context.append_basic_block(llfunction, "");
-    //     builder.position_at_end(llbody);
-
-    //     let body = &function.body;
-
-    //     let mut name_map = HashMap::new();
-
-    //     for (func_param_pos, (name_id, _)) in body.parameters.iter().enumerate() {
-    //         let llfunction = function_map[&fid];
-    //         let param = llfunction.get_nth_param(func_param_pos as u32).unwrap();
-    //         let alloc = builder.build_alloca(param.get_type(), "");
-    //         name_map.insert(name_id, alloc.into());
-    //         builder.build_store(alloc, param);
-    //     }
-
-    //     let body_type_map = BodyTypeMap::new(module, &module_type_map, body);
-
-    //     let return_value = build_expression(
-    //         &context,
-    //         &builder,
-    //         &llfunction,
-    //         &function_map,
-    //         &name_map,
-    //         module,
-    //         body,
-    //         &body_type_map,
-    //         body.block,
-    //     );
-
-    //     builder.build_return(Some(&return_value));
-    // }
 }

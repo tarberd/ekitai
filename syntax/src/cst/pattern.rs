@@ -1,4 +1,4 @@
-use super::{raw::SyntaxNode, CstNode, Identifier, Path, SyntaxToAstError};
+use super::{raw::SyntaxNode, CstNode, Name, Path, SyntaxToAstError};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
@@ -62,13 +62,11 @@ impl IdentifierPattern {
         SyntaxKind::IdentifierPattern
     }
 
-    pub fn identifier(&self) -> Identifier {
+    pub fn name(&self) -> Option<Name> {
         use std::convert::TryFrom;
         self.as_syntax_node()
-            .children_with_tokens()
-            .filter_map(|it| it.into_token())
-            .find_map(|it| Identifier::try_from(it).ok())
-            .unwrap()
+            .children()
+            .find_map(|n| Name::try_from(n).ok())
     }
 }
 
