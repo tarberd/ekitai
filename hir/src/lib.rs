@@ -85,6 +85,8 @@ pub trait DefinitionsDatabase:
 
     fn body_of_definition(&self, def: FunctionLocationId) -> Body;
 
+    fn expression_scope_map(&self, def: FunctionLocationId) -> ExpressionScopeMap;
+
     fn function_definition_data(&self, id: FunctionLocationId) -> FunctionDefinitionData;
 
     fn type_definition_data(&self, id: TypeLocationId) -> TypeDefinitionData;
@@ -165,6 +167,14 @@ fn body_of_definition(db: &dyn DefinitionsDatabase, id: FunctionLocationId) -> B
         .unwrap();
 
     Body::lower(function_cst_node)
+}
+
+fn expression_scope_map(
+    db: &dyn DefinitionsDatabase,
+    def: FunctionLocationId,
+) -> ExpressionScopeMap {
+    let body = db.body_of_definition(def);
+    ExpressionScopeMap::new(&body)
 }
 
 fn function_definition_data(
@@ -439,6 +449,54 @@ pub struct Body {
     pub root_expression: ExpressionId,
 }
 
+impl Body {
+    pub fn lower(function: cst::FunctionDefinition) -> Self {
+        let params = function
+            .parameter_list()
+            .unwrap()
+            .parameters()
+            .map(|param| {
+                (
+                    Pattern::lower(param.pattern().unwrap()),
+                    TypeReference::lower(param.ty().unwrap()),
+                )
+            });
+
+        let mut patterns = Arena::default();
+        let mut types = Arena::default();
+        let mut parameter_bindings = Vec::new();
+
+        for (pattern, ty) in params {
+            let pattern_id = patterns.alloc(pattern);
+            let ty_id = types.alloc(ty);
+            parameter_bindings.push((pattern_id, ty_id));
+        }
+
+        let return_type = function.return_type().map(TypeReference::lower).unwrap();
+
+        let (
+            BodyExpressionFold {
+                patterns,
+                expressions,
+            },
+            root_expression,
+        ) = BodyExpressionFold {
+            patterns,
+            expressions: Arena::default(),
+        }
+        .fold_block_expression(function.body().unwrap());
+
+        Self {
+            patterns,
+            types,
+            parameter_bindings,
+            return_type,
+            expressions,
+            root_expression,
+        }
+    }
+}
+
 struct BodyExpressionFold {
     pub expressions: Arena<Expression>,
     pub patterns: Arena<Pattern>,
@@ -636,54 +694,6 @@ impl BodyExpressionFold {
         let literal = Expression::Literal(literal);
         let id = self.expressions.alloc(literal);
         (self, id)
-    }
-}
-
-impl Body {
-    pub fn lower(function: cst::FunctionDefinition) -> Self {
-        let params = function
-            .parameter_list()
-            .unwrap()
-            .parameters()
-            .map(|param| {
-                (
-                    Pattern::lower(param.pattern().unwrap()),
-                    TypeReference::lower(param.ty().unwrap()),
-                )
-            });
-
-        let mut patterns = Arena::default();
-        let mut types = Arena::default();
-        let mut parameter_bindings = Vec::new();
-
-        for (pattern, ty) in params {
-            let pattern_id = patterns.alloc(pattern);
-            let ty_id = types.alloc(ty);
-            parameter_bindings.push((pattern_id, ty_id));
-        }
-
-        let return_type = function.return_type().map(TypeReference::lower).unwrap();
-
-        let (
-            BodyExpressionFold {
-                patterns,
-                expressions,
-            },
-            root_expression,
-        ) = BodyExpressionFold {
-            patterns,
-            expressions: Arena::default(),
-        }
-        .fold_block_expression(function.body().unwrap());
-
-        Self {
-            patterns,
-            types,
-            parameter_bindings,
-            return_type,
-            expressions,
-            root_expression,
-        }
     }
 }
 
@@ -885,3 +895,108 @@ static BUILTIN_SCOPE: &[(Name, Type)] = &[
         Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
     ),
 ];
+
+type ScopeId = Idx<Scope>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scope {
+    pub parent: Option<ScopeId>,
+    pub entries: Vec<(Name, PatternId)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExpressionScopeMap {
+    pub scopes: Arena<Scope>,
+    pub scope_map: HashMap<ExpressionId, ScopeId>,
+}
+
+impl ExpressionScopeMap {
+    pub fn new(body: &Body) -> Self {
+        let mut scopes = Arena::default();
+
+        let root = scopes.alloc(Self::build_root_scope(body));
+
+        let ExpressionScopeFold {
+            scopes, scope_map, ..
+        } = ExpressionScopeFold {
+            body,
+            scopes,
+            scope_map: HashMap::new(),
+        }
+        .fold_expression(body.root_expression, root);
+
+        Self { scopes, scope_map }
+    }
+
+    fn build_root_scope(body: &Body) -> Scope {
+        let entries = body
+            .parameter_bindings
+            .iter()
+            .flat_map(|(pattern_id, _)| {
+                let pattern = &body.patterns[*pattern_id];
+                match pattern {
+                    Pattern::Path(_) => None,
+                    Pattern::Bind(bind) => Some((bind.clone(), *pattern_id)),
+                }
+            })
+            .collect();
+
+        Scope {
+            parent: None,
+            entries,
+        }
+    }
+}
+
+struct ExpressionScopeFold<'body> {
+    pub body: &'body Body,
+    pub scopes: Arena<Scope>,
+    pub scope_map: HashMap<ExpressionId, ScopeId>,
+}
+
+impl<'body> ExpressionScopeFold<'body> {
+    fn fold_expression(mut self, expr_id: ExpressionId, scope_id: ScopeId) -> Self {
+        self.scope_map.insert(expr_id, scope_id);
+
+        match &self.body.expressions[expr_id] {
+            Expression::Block {
+                trailing_expression,
+            } => self.fold_expression(*trailing_expression, scope_id),
+            Expression::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self
+                .fold_expression(*condition, scope_id)
+                .fold_expression(*then_branch, scope_id)
+                .fold_expression(*else_branch, scope_id),
+            Expression::Match { matchee, case_list } => case_list.iter().fold(
+                self.fold_expression(*matchee, scope_id),
+                |mut fold, (pattern_id, expr_id)| {
+                    let entries = match &fold.body.patterns[*pattern_id] {
+                        Pattern::Path(_) => vec![],
+                        Pattern::Bind(name) => vec![(name.clone(), *pattern_id)],
+                    };
+
+                    let scope_id = fold.scopes.alloc(Scope {
+                        parent: Some(scope_id),
+                        entries,
+                    });
+
+                    fold.fold_expression(*expr_id, scope_id)
+                },
+            ),
+            Expression::Call { callee, arguments } => arguments
+                .iter()
+                .fold(self.fold_expression(*callee, scope_id), |fold, argument| {
+                    fold.fold_expression(*argument, scope_id)
+                }),
+            Expression::Binary(_, lhs, rhs) => self
+                .fold_expression(*lhs, scope_id)
+                .fold_expression(*rhs, scope_id),
+            Expression::Unary(_, expr) => self.fold_expression(*expr, scope_id),
+            Expression::Path(_) => self,
+            Expression::Literal(_) => self,
+        }
+    }
+}
