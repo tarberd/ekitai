@@ -1,4 +1,4 @@
-use crate::cst::{raw::SyntaxNode, CstNode, Expression, NameReference, SyntaxToAstError};
+use crate::cst::{raw::SyntaxNode, CstNode, Expression, Pattern, SyntaxToAstError};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
@@ -99,11 +99,11 @@ impl MatchCase {
         SyntaxKind::MatchCase
     }
 
-    pub fn pattern(&self) -> Option<NameReference> {
+    pub fn pattern(&self) -> Option<Pattern> {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .find_map(|s| NameReference::try_from(s).ok())
+            .find_map(|s| Pattern::try_from(s).ok())
     }
 
     pub fn expression(&self) -> Option<Expression> {

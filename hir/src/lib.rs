@@ -439,79 +439,30 @@ pub struct Body {
     pub root_expression: ExpressionId,
 }
 
-impl Body {
-    pub fn lower(function: cst::FunctionDefinition) -> Self {
-        let params = function
-            .parameter_list()
-            .unwrap()
-            .parameters()
-            .map(|param| {
-                (
-                    Pattern::lower(param.pattern().unwrap()),
-                    TypeReference::lower(param.ty().unwrap()),
-                )
-            });
+struct BodyExpressionFold {
+    pub expressions: Arena<Expression>,
+    pub patterns: Arena<Pattern>,
+}
 
-        let mut patterns = Arena::default();
-        let mut types = Arena::default();
-        let mut parameter_bindings = Vec::new();
-
-        for (pattern, ty) in params {
-            let pattern_id = patterns.alloc(pattern);
-            let ty_id = types.alloc(ty);
-            parameter_bindings.push((pattern_id, ty_id));
-        }
-
-        let return_type = function.return_type().map(TypeReference::lower).unwrap();
-
-        let (expressions, root_expression) =
-            Self::collect_block_expression(Arena::default(), function.body().unwrap());
-
-        Self {
-            patterns,
-            types,
-            parameter_bindings,
-            return_type,
-            expressions,
-            root_expression,
-        }
-    }
-
-    fn collect_expression(
-        expressions: Arena<Expression>,
-        expression: cst::Expression,
-    ) -> (Arena<Expression>, ExpressionId) {
+impl BodyExpressionFold {
+    fn fold_expression(self, expression: cst::Expression) -> (Self, ExpressionId) {
         match expression {
-            cst::Expression::Literal(literal) => {
-                Self::collect_literal_expression(expressions, literal)
-            }
-            cst::Expression::PathExpression(_) => todo!(),
-            cst::Expression::BlockExpression(block) => {
-                Self::collect_block_expression(expressions, block)
-            }
-            cst::Expression::InfixExpression(infix) => {
-                Self::collect_infix_expression(expressions, infix)
-            }
-            cst::Expression::PrefixExpression(prefix) => {
-                Self::collect_prefix_expression(expressions, prefix)
-            }
+            cst::Expression::Literal(literal) => self.fold_literal_expression(literal),
+            cst::Expression::PathExpression(path) => self.fold_path_expression(path),
+            cst::Expression::BlockExpression(block) => self.fold_block_expression(block),
+            cst::Expression::InfixExpression(infix) => self.fold_infix_expression(infix),
+            cst::Expression::PrefixExpression(prefix) => self.fold_prefix_expression(prefix),
             cst::Expression::ParenthesisExpression(paren) => {
-                Self::collect_expression(expressions, paren.inner_expression().unwrap())
+                self.fold_expression(paren.inner_expression().unwrap())
             }
-            cst::Expression::CallExpression(_) => todo!(),
-            cst::Expression::IfExpression(if_expr) => {
-                Self::collect_if_expression(expressions, if_expr)
-            }
-            cst::Expression::MatchExpression(_) => todo!(),
+            cst::Expression::CallExpression(call) => self.fold_call_expression(call),
+            cst::Expression::IfExpression(if_expr) => self.fold_if_expression(if_expr),
+            cst::Expression::MatchExpression(match_expr) => self.fold_match_expression(match_expr),
         }
     }
 
-    fn collect_block_expression(
-        expressions: Arena<Expression>,
-        block: cst::BlockExpression,
-    ) -> (Arena<Expression>, ExpressionId) {
-        let (mut expressions, trailing_expression) = Self::collect_expression(
-            expressions,
+    fn fold_block_expression(self, block: cst::BlockExpression) -> (Self, ExpressionId) {
+        let (mut fold, trailing_expression) = self.fold_expression(
             block
                 .tail_expression()
                 .expect("missing tail expression from block"),
@@ -519,22 +470,15 @@ impl Body {
         let expr = Expression::Block {
             trailing_expression,
         };
-        let id = expressions.alloc(expr);
-        (expressions, id)
+        let id = fold.expressions.alloc(expr);
+        (fold, id)
     }
 
-    fn collect_infix_expression(
-        expressions: Arena<Expression>,
-        infix: cst::InfixExpression,
-    ) -> (Arena<Expression>, ExpressionId) {
-        let (expressions, lhs) = Self::collect_expression(
-            expressions,
-            infix.lhs().expect("missing lhs from infix expression"),
-        );
-        let (mut expressions, rhs) = Self::collect_expression(
-            expressions,
-            infix.rhs().expect("missing rhs from infix expression"),
-        );
+    fn fold_infix_expression(self, infix: cst::InfixExpression) -> (Self, ExpressionId) {
+        let (fold, lhs) =
+            self.fold_expression(infix.lhs().expect("missing lhs from infix expression"));
+        let (mut fold, rhs) =
+            fold.fold_expression(infix.rhs().expect("missing rhs from infix expression"));
 
         let op = match infix
             .operator()
@@ -572,16 +516,12 @@ impl Body {
         };
 
         let bin_expr = Expression::Binary(op, lhs, rhs);
-        let id = expressions.alloc(bin_expr);
-        (expressions, id)
+        let id = fold.expressions.alloc(bin_expr);
+        (fold, id)
     }
 
-    fn collect_prefix_expression(
-        expressions: Arena<Expression>,
-        prefix: cst::PrefixExpression,
-    ) -> (Arena<Expression>, ExpressionId) {
-        let (mut expressions, inner) = Self::collect_expression(
-            expressions,
+    fn fold_prefix_expression(self, prefix: cst::PrefixExpression) -> (Self, ExpressionId) {
+        let (mut fold, inner) = self.fold_expression(
             prefix
                 .inner()
                 .expect("missing inner expression from prefix expression"),
@@ -595,34 +535,71 @@ impl Body {
         };
 
         let unary_expr = Expression::Unary(op, inner);
-        let id = expressions.alloc(unary_expr);
-        (expressions, id)
+        let id = fold.expressions.alloc(unary_expr);
+        (fold, id)
     }
 
-    fn collect_if_expression(
-        expressions: Arena<Expression>,
-        if_expr: cst::IfExpression,
-    ) -> (Arena<Expression>, ExpressionId) {
-        let (expressions, condition) =
-            Self::collect_expression(expressions, if_expr.condition().unwrap());
-        let (expressions, then_branch) =
-            Self::collect_expression(expressions, if_expr.then_branch().unwrap());
-        let (mut expressions, else_branch) =
-            Self::collect_expression(expressions, if_expr.else_branch().unwrap());
+    fn fold_if_expression(self, if_expr: cst::IfExpression) -> (Self, ExpressionId) {
+        let (fold, condition) = self.fold_expression(if_expr.condition().unwrap());
+        let (fold, then_branch) = fold.fold_expression(if_expr.then_branch().unwrap());
+        let (mut fold, else_branch) = fold.fold_expression(if_expr.else_branch().unwrap());
 
-        let id = expressions.alloc(Expression::If {
+        let id = fold.expressions.alloc(Expression::If {
             condition,
             then_branch,
             else_branch,
         });
 
-        (expressions, id)
+        (fold, id)
     }
 
-    fn collect_literal_expression(
-        mut expressions: Arena<Expression>,
-        literal: cst::Literal,
-    ) -> (Arena<Expression>, ExpressionId) {
+    fn fold_match_expression(self, match_expr: cst::MatchExpression) -> (Self, ExpressionId) {
+        let (fold, matchee) = self.fold_expression(match_expr.matchee().unwrap());
+
+        let (mut fold, case_list) = match_expr.case_list().unwrap().cases().fold(
+            (fold, Vec::new()),
+            |(fold, mut case_list), case| {
+                let (mut fold, case_expr) = fold.fold_expression(case.expression().unwrap());
+                let pattern = fold.patterns.alloc(Pattern::lower(case.pattern().unwrap()));
+                case_list.push((pattern, case_expr));
+                (fold, case_list)
+            },
+        );
+
+        let match_expr = Expression::Match { matchee, case_list };
+        let id = fold.expressions.alloc(match_expr);
+        (fold, id)
+    }
+
+    fn fold_call_expression(self, call: cst::CallExpression) -> (Self, ExpressionId) {
+        let (fold, callee) =
+            self.fold_expression(call.callee().expect("missing callee from call expression"));
+
+        let (mut fold, arguments) = call
+            .argument_list()
+            .expect("missing argument list from call expression")
+            .arguments()
+            .fold(
+                (fold, Vec::new()),
+                |(expressions, mut arguments), expression| {
+                    let (expressions, argument) = Self::fold_expression(expressions, expression);
+                    arguments.push(argument);
+                    (expressions, arguments)
+                },
+            );
+
+        let call = Expression::Call { callee, arguments };
+        let id = fold.expressions.alloc(call);
+        (fold, id)
+    }
+
+    fn fold_path_expression(mut self, path: cst::PathExpression) -> (Self, ExpressionId) {
+        let path_expr = Expression::Path(Path::lower(path.path().unwrap()));
+        let id = self.expressions.alloc(path_expr);
+        (self, id)
+    }
+
+    fn fold_literal_expression(mut self, literal: cst::Literal) -> (Self, ExpressionId) {
         let literal = match literal.literal_kind() {
             cst::LiteralKind::Integer(integer) => {
                 let (radical, suffix) = integer.radical_and_suffix();
@@ -657,8 +634,56 @@ impl Body {
         };
 
         let literal = Expression::Literal(literal);
-        let id = expressions.alloc(literal);
-        (expressions, id)
+        let id = self.expressions.alloc(literal);
+        (self, id)
+    }
+}
+
+impl Body {
+    pub fn lower(function: cst::FunctionDefinition) -> Self {
+        let params = function
+            .parameter_list()
+            .unwrap()
+            .parameters()
+            .map(|param| {
+                (
+                    Pattern::lower(param.pattern().unwrap()),
+                    TypeReference::lower(param.ty().unwrap()),
+                )
+            });
+
+        let mut patterns = Arena::default();
+        let mut types = Arena::default();
+        let mut parameter_bindings = Vec::new();
+
+        for (pattern, ty) in params {
+            let pattern_id = patterns.alloc(pattern);
+            let ty_id = types.alloc(ty);
+            parameter_bindings.push((pattern_id, ty_id));
+        }
+
+        let return_type = function.return_type().map(TypeReference::lower).unwrap();
+
+        let (
+            BodyExpressionFold {
+                patterns,
+                expressions,
+            },
+            root_expression,
+        ) = BodyExpressionFold {
+            patterns,
+            expressions: Arena::default(),
+        }
+        .fold_block_expression(function.body().unwrap());
+
+        Self {
+            patterns,
+            types,
+            parameter_bindings,
+            return_type,
+            expressions,
+            root_expression,
+        }
     }
 }
 
@@ -691,11 +716,18 @@ pub enum Expression {
         then_branch: ExpressionId,
         else_branch: ExpressionId,
     },
+    Match {
+        matchee: ExpressionId,
+        case_list: Vec<(PatternId, ExpressionId)>,
+    },
+    Call {
+        callee: ExpressionId,
+        arguments: Vec<ExpressionId>,
+    },
     Binary(BinaryOperator, ExpressionId, ExpressionId),
     Unary(UnaryOperator, ExpressionId),
-    Literal(Literal),
     Path(Path),
-    Call,
+    Literal(Literal),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
