@@ -445,7 +445,7 @@ impl BinaryOperator {
             SyntaxKind::Greater,
             SyntaxKind::GreaterEquals,
         ];
-        &KINDS
+        KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxToken) -> Self {
@@ -499,7 +499,7 @@ impl CstToken for UnaryOperator {
 impl UnaryOperator {
     fn try_from_set() -> &'static [SyntaxKind] {
         static KINDS: &[SyntaxKind] = &[SyntaxKind::Minus];
-        &KINDS
+        KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxToken) -> Self {

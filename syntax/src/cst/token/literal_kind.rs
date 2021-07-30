@@ -10,7 +10,7 @@ pub enum LiteralKind {
 impl LiteralKind {
     fn try_from_set() -> &'static [SyntaxKind] {
         static KINDS: &[SyntaxKind] = &[SyntaxKind::Integer];
-        &KINDS
+        KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxToken) -> Self {

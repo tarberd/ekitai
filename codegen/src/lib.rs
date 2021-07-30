@@ -43,6 +43,7 @@ fn inkwell_basic_type<'ink>(
                 hir::IntegerKind::I32 => context.i32_type().into(),
                 hir::IntegerKind::I64 => context.i64_type().into(),
             },
+            hir::ScalarType::Boolean => context.i32_type().into(),
         },
     }
 }
@@ -83,6 +84,8 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
             hir::LocationId::FunctionLocationId(f_id) => {
                 let fun = db.function_definition_data(*f_id);
                 let sig = db.function_definition_signature(*f_id);
+                let infer = db.infer_body_expression_types(*f_id);
+                println!("{:#?}", infer);
 
                 let param_tys = sig
                     .parameter_types

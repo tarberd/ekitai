@@ -47,7 +47,7 @@ impl Expression {
             SyntaxKind::IfExpression,
             SyntaxKind::MatchExpression,
         ];
-        &KINDS
+        KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {

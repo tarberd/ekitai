@@ -19,7 +19,7 @@ impl CstNode for ModuleItem {
 impl ModuleItem {
     fn try_from_set() -> &'static [SyntaxKind] {
         static KINDS: &[SyntaxKind] = &[SyntaxKind::FunctionDefinition, SyntaxKind::TypeDefinition];
-        &KINDS
+        KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {

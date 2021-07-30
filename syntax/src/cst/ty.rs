@@ -17,7 +17,7 @@ impl CstNode for Type {
 impl Type {
     fn try_from_set() -> &'static [SyntaxKind] {
         static KINDS: &[SyntaxKind] = &[SyntaxKind::PathType];
-        &KINDS
+        KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {

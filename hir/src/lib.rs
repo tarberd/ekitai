@@ -1,4 +1,4 @@
-use la_arena::{Arena, Idx};
+use la_arena::{Arena, ArenaMap, Idx};
 use smol_str::SmolStr;
 use std::{collections::HashMap, convert::TryFrom, marker::PhantomData};
 use syntax::{
@@ -221,6 +221,8 @@ pub trait HirDatabase: DefinitionsDatabase + Upcast<dyn DefinitionsDatabase> {
     // fn value_constructor_filds(&self, id: ValueConstructorId) -> ArenaMap<FildId, TypeKind>;
 
     fn function_definition_signature(&self, function: FunctionLocationId) -> FunctionSignature;
+
+    fn infer_body_expression_types(&self, function: FunctionLocationId) -> InferenceResult;
 }
 
 fn type_of_definition(_db: &dyn HirDatabase, definition: TypableDefinitionId) -> Type {
@@ -262,10 +264,51 @@ fn function_definition_signature(
     }
 }
 
+fn infer_body_expression_types(
+    db: &dyn HirDatabase,
+    function_id: FunctionLocationId,
+) -> InferenceResult {
+    let body = db.body_of_definition(function_id);
+    let resolver = Resolver::new_for_function(db, function_id);
+
+    let mut fold = InferenceResultFold::new(db, function_id, &body);
+
+    for (pattern_id, ty_id) in body.parameter_bindings.iter() {
+        let tyref = &body.types[*ty_id];
+        let ty = match tyref {
+            TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
+        };
+        let pattern = &body.patterns[*pattern_id];
+        match pattern {
+            Pattern::Bind(_) => fold
+                .inference_result
+                .type_of_pattern
+                .insert(*pattern_id, ty),
+            Pattern::Path(path) => {
+                let ty = resolver.resolve_path_as_type(db.upcast(), path);
+                fold.inference_result
+                    .type_of_pattern
+                    .insert(*pattern_id, ty);
+            }
+        }
+    }
+
+    let (mut fold, ty) = fold.collect_expression_type(body.root_expression);
+    let ret_ty = db.function_definition_signature(function_id).return_type;
+    if ty != ret_ty {
+        panic!("expected {:?} found {:?}", ret_ty, ty);
+    }
+    fold.inference_result
+        .type_of_expression
+        .insert(body.root_expression, ty);
+    fold.inference_result
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CstIdMap {
     arena: Arena<SyntaxNodePointer>,
 }
+
 impl CstIdMap {
     fn from_source_file(source_file: cst::SourceFile) -> Self {
         let arena = source_file
@@ -342,6 +385,7 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScalarType {
     Integer(IntegerKind),
+    Boolean,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -847,19 +891,80 @@ pub struct FunctionSignature {
     pub return_type: Type,
 }
 
-pub struct Resolver {}
+pub struct Resolver {
+    scopes: Vec<Scope>,
+}
 
 impl Resolver {
     pub fn new_empty() -> Self {
-        Resolver {}
+        Resolver { scopes: Vec::new() }
     }
 
-    pub fn new_root_resolver(_db: &dyn HirDatabase) -> Self {
-        Resolver::new_empty()
+    pub fn new_root_resolver(db: &dyn HirDatabase) -> Self {
+        let scopes = vec![Scope::Module {
+            definitions_map: db.source_file_definitions_map(),
+        }];
+
+        Self { scopes }
     }
 
     pub fn new_for_function(db: &dyn HirDatabase, _fid: FunctionLocationId) -> Self {
         Self::new_root_resolver(db)
+    }
+
+    pub fn new_for_expression(
+        db: &dyn HirDatabase,
+        function_id: FunctionLocationId,
+        expression_id: ExpressionId,
+    ) -> Self {
+        let resolver = Self::new_root_resolver(db);
+        let expr_scope_map = db.expression_scope_map(function_id);
+
+        let resolver = expr_scope_map
+            .expression_scope_ids(expression_id)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .fold(resolver, |mut resolver, scope_id| {
+                resolver.scopes.push(Scope::Expression {
+                    scope_map: expr_scope_map.clone(),
+                    scope_id,
+                });
+                resolver
+            });
+
+        resolver
+    }
+
+    pub fn resolve_path_as_value(&self, path: &Path) -> Option<ValueResolution> {
+        let segments_len = path.segments.len();
+        let first_segment = path.segments.first()?;
+        let mut result = None;
+        for scope in self.scopes.iter().rev() {
+            match scope {
+                Scope::Module { definitions_map } => {
+                    todo!()
+                },
+                Scope::Expression {
+                    scope_map,
+                    scope_id,
+                } if segments_len == 1 => {
+                    let scope = &scope_map.scopes[*scope_id];
+                    let id = scope
+                        .entries
+                        .iter()
+                        .find(|(name, _)| name == first_segment)
+                        .map(|(_, pattern)| pattern);
+
+                    match id {
+                        Some(&pattern) => result = Some(ValueResolution::LocalBinding(pattern)),
+                        None => continue,
+                    }
+                }
+                Scope::Expression { .. } => continue,
+            }
+        }
+        result
     }
 
     pub fn resolve_path_as_type(&self, db: &dyn DefinitionsDatabase, path: &Path) -> Type {
@@ -885,6 +990,20 @@ impl Resolver {
     }
 }
 
+pub enum ValueResolution {
+    LocalBinding(PatternId),
+}
+
+pub enum Scope {
+    Module {
+        definitions_map: DefinitionsMap,
+    },
+    Expression {
+        scope_map: ExpressionScopeMap,
+        scope_id: ExpressionScopeId,
+    },
+}
+
 static BUILTIN_SCOPE: &[(Name, Type)] = &[
     (
         Name::new_inline("i32"),
@@ -896,18 +1015,18 @@ static BUILTIN_SCOPE: &[(Name, Type)] = &[
     ),
 ];
 
-type ScopeId = Idx<Scope>;
+type ExpressionScopeId = Idx<ExpressionScope>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Scope {
-    pub parent: Option<ScopeId>,
+pub struct ExpressionScope {
+    pub parent: Option<ExpressionScopeId>,
     pub entries: Vec<(Name, PatternId)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpressionScopeMap {
-    pub scopes: Arena<Scope>,
-    pub scope_map: HashMap<ExpressionId, ScopeId>,
+    pub scopes: Arena<ExpressionScope>,
+    pub scope_map: HashMap<ExpressionId, ExpressionScopeId>,
 }
 
 impl ExpressionScopeMap {
@@ -928,7 +1047,15 @@ impl ExpressionScopeMap {
         Self { scopes, scope_map }
     }
 
-    fn build_root_scope(body: &Body) -> Scope {
+    pub fn expression_scope_ids(
+        &self,
+        expression_id: ExpressionId,
+    ) -> impl Iterator<Item = ExpressionScopeId> + '_ {
+        let scope_id = self.scope_map[&expression_id];
+        std::iter::successors(Some(scope_id), move |&scope| self.scopes[scope].parent)
+    }
+
+    fn build_root_scope(body: &Body) -> ExpressionScope {
         let entries = body
             .parameter_bindings
             .iter()
@@ -941,7 +1068,7 @@ impl ExpressionScopeMap {
             })
             .collect();
 
-        Scope {
+        ExpressionScope {
             parent: None,
             entries,
         }
@@ -950,12 +1077,12 @@ impl ExpressionScopeMap {
 
 struct ExpressionScopeFold<'body> {
     pub body: &'body Body,
-    pub scopes: Arena<Scope>,
-    pub scope_map: HashMap<ExpressionId, ScopeId>,
+    pub scopes: Arena<ExpressionScope>,
+    pub scope_map: HashMap<ExpressionId, ExpressionScopeId>,
 }
 
 impl<'body> ExpressionScopeFold<'body> {
-    fn fold_expression(mut self, expr_id: ExpressionId, scope_id: ScopeId) -> Self {
+    fn fold_expression(mut self, expr_id: ExpressionId, scope_id: ExpressionScopeId) -> Self {
         self.scope_map.insert(expr_id, scope_id);
 
         match &self.body.expressions[expr_id] {
@@ -978,7 +1105,7 @@ impl<'body> ExpressionScopeFold<'body> {
                         Pattern::Bind(name) => vec![(name.clone(), *pattern_id)],
                     };
 
-                    let scope_id = fold.scopes.alloc(Scope {
+                    let scope_id = fold.scopes.alloc(ExpressionScope {
                         parent: Some(scope_id),
                         entries,
                     });
@@ -997,6 +1124,192 @@ impl<'body> ExpressionScopeFold<'body> {
             Expression::Unary(_, expr) => self.fold_expression(*expr, scope_id),
             Expression::Path(_) => self,
             Expression::Literal(_) => self,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InferenceResult {
+    pub type_of_expression: ArenaMap<ExpressionId, Type>,
+    pub type_of_pattern: ArenaMap<PatternId, Type>,
+}
+
+struct InferenceResultFold<'s> {
+    pub db: &'s dyn HirDatabase,
+    pub function_id: FunctionLocationId,
+    pub body: &'s Body,
+    pub inference_result: InferenceResult,
+}
+
+impl<'s> InferenceResultFold<'s> {
+    pub fn new(db: &'s dyn HirDatabase, function_id: FunctionLocationId, body: &'s Body) -> Self {
+        Self {
+            db,
+            function_id,
+            body,
+            inference_result: InferenceResult {
+                type_of_expression: ArenaMap::default(),
+                type_of_pattern: ArenaMap::default(),
+            },
+        }
+    }
+
+    fn collect_expression_type(mut self, expr_id: ExpressionId) -> (Self, Type) {
+        let expr = &self.body.expressions[expr_id];
+        match expr {
+            Expression::Block {
+                trailing_expression,
+            } => {
+                let (mut fold, ty) = self.collect_expression_type(*trailing_expression);
+                fold.inference_result
+                    .type_of_expression
+                    .insert(expr_id, ty.clone());
+                (fold, ty)
+            }
+            Expression::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let (fold, condition_ty) = self.collect_expression_type(*condition);
+                let (fold, then_ty) = fold.collect_expression_type(*then_branch);
+                let (mut fold, else_ty) = fold.collect_expression_type(*else_branch);
+
+                if condition_ty != Type::Scalar(ScalarType::Boolean) {
+                    panic!();
+                }
+
+                if then_ty != else_ty {
+                    panic!("mismatching types of then and else branches");
+                }
+
+                fold.inference_result
+                    .type_of_expression
+                    .insert(expr_id, then_ty.clone());
+                (fold, then_ty)
+            }
+            Expression::Binary(op, lhs, rhs) => {
+                let (fold, lhs_ty) = self.collect_expression_type(*lhs);
+                let (mut fold, rhs_ty) = fold.collect_expression_type(*rhs);
+
+                if lhs_ty != rhs_ty {
+                    panic!()
+                }
+
+                let ret_ty = match op {
+                    BinaryOperator::Arithmetic(_) => match rhs_ty {
+                        Type::Scalar(ScalarType::Integer(_)) => rhs_ty.clone(),
+                        _ => panic!(),
+                    },
+                    BinaryOperator::Compare(_) => Type::Scalar(ScalarType::Boolean),
+                };
+
+                fold.inference_result
+                    .type_of_expression
+                    .insert(expr_id, ret_ty.clone());
+                (fold, ret_ty)
+            }
+            Expression::Unary(op, expr) => match op {
+                UnaryOperator::Minus => {
+                    let (mut fold, ty) = self.collect_expression_type(*expr);
+                    fold.inference_result
+                        .type_of_expression
+                        .insert(expr_id, ty.clone());
+                    (fold, ty)
+                }
+            },
+            Expression::Match { matchee, case_list } => {
+                let (fold, matchee_type) = self.collect_expression_type(*matchee);
+
+                let (fold, case_types) = case_list.iter().fold(
+                    (fold, Vec::new()),
+                    |(mut fold, mut case_types), (pattern_id, case)| {
+                        match &fold.body.patterns[*pattern_id] {
+                            Pattern::Path(path) => {
+                                let scope_map = fold.db.expression_scope_map(fold.function_id);
+                                let resolver =
+                                    Resolver::new_for_function(fold.db, fold.function_id);
+                                let scope_id = scope_map.scope_map.get(&expr_id).unwrap();
+                                let scope = &scope_map.scopes[*scope_id];
+
+                                let ty = resolver.resolve_path_as_type(fold.db.upcast(), path);
+                                fold.inference_result
+                                    .type_of_pattern
+                                    .insert(*pattern_id, ty);
+                            }
+                            Pattern::Bind(_) => fold
+                                .inference_result
+                                .type_of_pattern
+                                .insert(*pattern_id, matchee_type.clone()),
+                        };
+                        let (fold, case_type) = fold.collect_expression_type(*case);
+                        case_types.push(case_type);
+                        (fold, case_types)
+                    },
+                );
+
+                let mut case_types = case_types.iter();
+
+                if let Some(first_case_type) = case_types.next() {
+                    for case_type in case_types {
+                        if case_type != first_case_type {
+                            panic!(
+                                "on match case: Expected {:?} found {:?}",
+                                first_case_type, case_type
+                            );
+                        }
+                    }
+
+                    (fold, first_case_type.clone())
+                } else {
+                    panic!("empty match case list")
+                }
+            }
+            Expression::Literal(lit) => {
+                let ty = match lit {
+                    Literal::Integer(_, some_kind) => match some_kind {
+                        Some(int_kind) => Type::Scalar(ScalarType::Integer(int_kind.clone())),
+                        None => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                    },
+                };
+                self.inference_result
+                    .type_of_expression
+                    .insert(expr_id, ty.clone());
+                (self, ty)
+            }
+            Expression::Path(path) => {
+                let resolver = Resolver::new_for_function(self.db, self.function_id);
+                let ty = resolver.resolve_path_as_type(self.db.upcast(), path);
+                self.inference_result
+                    .type_of_expression
+                    .insert(expr_id, ty.clone());
+                (self, ty)
+            }
+            Expression::Call { callee, arguments } => {
+                let (fold, callee_type) = self.collect_expression_type(*callee);
+                match callee_type {
+                    Type::FunctionDefinition(f_id) => {
+                        let sig = fold.db.function_definition_signature(f_id);
+                        let (mut fold, arg_tys) = arguments.iter().fold(
+                            (fold, Vec::new()),
+                            |(fold, mut arguments), arg| {
+                                let (fold, arg_ty) = fold.collect_expression_type(*arg);
+                                arguments.push(arg_ty);
+                                (fold, arguments)
+                            },
+                        );
+                        if sig.parameter_types != arg_tys {
+                            panic!("type of parameters to function call do not match the parameters in the function definition")
+                        };
+                        let ret_ty = sig.return_type;
+                        fold.inference_result
+                            .type_of_expression
+                            .insert(expr_id, ret_ty.clone());
+                        (fold, ret_ty)
+                    }
+                    x => panic!("function call not implemented for {:?} type", x),
+                }
+            }
         }
     }
 }

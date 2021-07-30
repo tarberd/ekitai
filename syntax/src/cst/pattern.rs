@@ -19,7 +19,7 @@ impl CstNode for Pattern {
 impl Pattern {
     fn try_from_set() -> &'static [SyntaxKind] {
         static KINDS: &[SyntaxKind] = &[SyntaxKind::PathPattern, SyntaxKind::IdentifierPattern];
-        &KINDS
+        KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {
