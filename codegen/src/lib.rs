@@ -74,6 +74,7 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
                 sty.set_body(&[context.i128_type().into(); 3], false);
                 type_map.insert(*ty_id, sty);
             }
+            hir::LocationId::TypeConstructorId(_, _) => todo!(),
         };
     }
 
@@ -100,6 +101,7 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
                 llvm_module.add_function(fun.name.id.as_str(), llfty, None);
             }
             hir::LocationId::TypeLocationId(_) => continue,
+            hir::LocationId::TypeConstructorId(_, _) => todo!(),
         }
     }
 

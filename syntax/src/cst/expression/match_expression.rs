@@ -110,8 +110,7 @@ impl MatchCase {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
-            .filter_map(|s| Expression::try_from(s).ok())
-            .nth(1)
+            .find_map(|s| Expression::try_from(s).ok())
     }
 }
 

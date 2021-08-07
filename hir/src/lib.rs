@@ -236,6 +236,9 @@ fn type_of_value(_db: &dyn HirDatabase, value: TypableValueDefinitionId) -> Type
         TypableValueDefinitionId::Function(function_location_id) => {
             Type::FunctionDefinition(function_location_id)
         }
+        TypableValueDefinitionId::ValueConstructor(ValueConstructorId {
+            parrent_id,
+        }) => Type::AbstractDataType(parrent_id),
     }
 }
 
@@ -246,17 +249,21 @@ fn function_definition_signature(
     let resolver = Resolver::new_for_function(db, function_id);
     let function = db.function_definition_data(function_id);
 
+    let typeref_resolver = TypeReferenceResolver::new(db, &resolver);
+
     let parameter_types = function
         .parameter_types
         .iter()
-        .map(|type_reference| match type_reference {
-            TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
+        .map(|type_reference| {
+            typeref_resolver
+                .resolve_type_reference(type_reference)
+                .expect("missing function definition argument type")
         })
         .collect();
 
-    let return_type = match &function.return_type {
-        TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
-    };
+    let return_type = typeref_resolver
+        .resolve_type_reference(&function.return_type)
+        .expect("missing function definition return type");
 
     FunctionSignature {
         parameter_types,
@@ -268,40 +275,7 @@ fn infer_body_expression_types(
     db: &dyn HirDatabase,
     function_id: FunctionLocationId,
 ) -> InferenceResult {
-    let body = db.body_of_definition(function_id);
-    let resolver = Resolver::new_for_function(db, function_id);
-
-    let mut fold = InferenceResultFold::new(db, function_id, &body);
-
-    for (pattern_id, ty_id) in body.parameter_bindings.iter() {
-        let tyref = &body.types[*ty_id];
-        let ty = match tyref {
-            TypeReference::Path(path) => resolver.resolve_path_as_type(db.upcast(), path),
-        };
-        let pattern = &body.patterns[*pattern_id];
-        match pattern {
-            Pattern::Bind(_) => fold
-                .inference_result
-                .type_of_pattern
-                .insert(*pattern_id, ty),
-            Pattern::Path(path) => {
-                let ty = resolver.resolve_path_as_type(db.upcast(), path);
-                fold.inference_result
-                    .type_of_pattern
-                    .insert(*pattern_id, ty);
-            }
-        }
-    }
-
-    let (mut fold, ty) = fold.collect_expression_type(body.root_expression);
-    let ret_ty = db.function_definition_signature(function_id).return_type;
-    if ty != ret_ty {
-        panic!("expected {:?} found {:?}", ret_ty, ty);
-    }
-    fold.inference_result
-        .type_of_expression
-        .insert(body.root_expression, ty);
-    fold.inference_result
+    InferenceResult::new(db, function_id)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -352,6 +326,72 @@ pub struct DefinitionsMap {
     pub item_scope: ItemScope,
 }
 
+impl DefinitionsMap {
+    fn resolve_path(&self, db: &dyn DefinitionsDatabase, path: &Path) -> NamespaceResolution {
+        path.segments
+            .first()
+            .map(|name| self.resolve_name(name))
+            .and_then(|resolution| {
+                path.segments
+                    .iter()
+                    .skip(1)
+                    .try_fold(resolution, |resolution, name| {
+                        resolution
+                            .in_type_namespace()
+                            .map(|typable_item| match typable_item {
+                                TypeNamespaceItem::TypeDefinition(id) => {
+                                    let ty_data = db.type_definition_data(id);
+                                    let value = ty_data
+                                        .value_constructors
+                                        .iter()
+                                        .find(|constructor| constructor.name == *name)
+                                        .map(|_constructor| {
+                                            ValueNamespaceItem::ValueConstructor(
+                                                ValueConstructorId {
+                                                    parrent_id: id,
+                                                },
+                                            )
+                                        });
+
+                                    NamespaceResolution::new(None, value)
+                                }
+                            })
+                    })
+            })
+            .unwrap_or_default()
+    }
+
+    fn resolve_name(&self, name: &Name) -> NamespaceResolution {
+        self.item_scope.get(name)
+    }
+}
+
+#[derive(Default)]
+struct NamespaceResolution {
+    type_resolution: Option<TypeNamespaceItem>,
+    value_resolution: Option<ValueNamespaceItem>,
+}
+
+impl NamespaceResolution {
+    fn new(
+        type_resolution: Option<TypeNamespaceItem>,
+        value_resolution: Option<ValueNamespaceItem>,
+    ) -> Self {
+        Self {
+            type_resolution,
+            value_resolution,
+        }
+    }
+
+    fn in_type_namespace(self) -> Option<TypeNamespaceItem> {
+        self.type_resolution
+    }
+
+    fn in_value_namespace(self) -> Option<ValueNamespaceItem> {
+        self.value_resolution
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemScope {
     pub types: HashMap<Name, LocationId>,
@@ -359,10 +399,26 @@ pub struct ItemScope {
     pub definitions: Vec<LocationId>,
 }
 
+impl ItemScope {
+    fn get(&self, name: &Name) -> NamespaceResolution {
+        NamespaceResolution::new(
+            self.types.get(name).and_then(|loc| match loc {
+                LocationId::TypeLocationId(id) => Some(TypeNamespaceItem::TypeDefinition(*id)),
+                _ => None,
+            }),
+            self.values.get(name).and_then(|loc| match loc {
+                LocationId::FunctionLocationId(id) => Some(ValueNamespaceItem::Function(*id)),
+                _ => None,
+            }),
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocationId {
     FunctionLocationId(FunctionLocationId),
     TypeLocationId(TypeLocationId),
+    TypeConstructorId(TypeLocationId, ValueConstructor),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -373,6 +429,7 @@ pub enum TypableDefinitionId {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypableValueDefinitionId {
     Function(FunctionLocationId),
+    ValueConstructor(ValueConstructorId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -422,6 +479,11 @@ impl TypeDefinition {
             cst_id: cst_map.cst_id(&ty),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ValueConstructorId {
+    pub parrent_id: TypeLocationId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -486,37 +548,21 @@ impl FunctionDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Body {
     pub patterns: Arena<Pattern>,
-    pub types: Arena<TypeReference>,
-    pub parameter_bindings: Vec<(PatternId, TypeReferenceId)>,
-    pub return_type: TypeReference,
+    pub parameter_bindings: Vec<PatternId>,
     pub expressions: Arena<Expression>,
     pub root_expression: ExpressionId,
 }
 
 impl Body {
     pub fn lower(function: cst::FunctionDefinition) -> Self {
-        let params = function
+        let patterns = function
             .parameter_list()
             .unwrap()
             .parameters()
-            .map(|param| {
-                (
-                    Pattern::lower(param.pattern().unwrap()),
-                    TypeReference::lower(param.ty().unwrap()),
-                )
-            });
+            .map(|param| Pattern::lower(param.pattern().unwrap()))
+            .collect::<Arena<_>>();
 
-        let mut patterns = Arena::default();
-        let mut types = Arena::default();
-        let mut parameter_bindings = Vec::new();
-
-        for (pattern, ty) in params {
-            let pattern_id = patterns.alloc(pattern);
-            let ty_id = types.alloc(ty);
-            parameter_bindings.push((pattern_id, ty_id));
-        }
-
-        let return_type = function.return_type().map(TypeReference::lower).unwrap();
+        let parameter_bindings = patterns.iter().map(|(id, _)| id).collect();
 
         let (
             BodyExpressionFold {
@@ -532,9 +578,7 @@ impl Body {
 
         Self {
             patterns,
-            types,
             parameter_bindings,
-            return_type,
             expressions,
             root_expression,
         }
@@ -839,7 +883,7 @@ impl Name {
         }
     }
 
-    const fn new_inline(name: &str) -> Self {
+    const fn _new_inline(name: &str) -> Self {
         Self {
             id: SmolStr::new_inline(name),
         }
@@ -936,61 +980,64 @@ impl Resolver {
         resolver
     }
 
-    pub fn resolve_path_as_value(&self, path: &Path) -> Option<ValueResolution> {
-        let segments_len = path.segments.len();
-        let first_segment = path.segments.first()?;
-        let mut result = None;
-        for scope in self.scopes.iter().rev() {
-            match scope {
-                Scope::Module { definitions_map } => {
-                    todo!()
-                },
-                Scope::Expression {
-                    scope_map,
-                    scope_id,
-                } if segments_len == 1 => {
-                    let scope = &scope_map.scopes[*scope_id];
-                    let id = scope
-                        .entries
-                        .iter()
-                        .find(|(name, _)| name == first_segment)
-                        .map(|(_, pattern)| pattern);
-
-                    match id {
-                        Some(&pattern) => result = Some(ValueResolution::LocalBinding(pattern)),
-                        None => continue,
+    pub fn resolve_path_in_type_namespace(
+        &self,
+        db: &dyn DefinitionsDatabase,
+        path: &Path,
+    ) -> Option<TypeNamespaceItem> {
+        path.segments
+            .first()
+            .map(|_| {
+                self.scopes.iter().rev().find_map(|scope| match scope {
+                    Scope::Module { definitions_map } => {
+                        definitions_map.resolve_path(db, path).in_type_namespace()
                     }
-                }
-                Scope::Expression { .. } => continue,
-            }
-        }
-        result
+                    Scope::Expression { .. } => None,
+                })
+            })
+            .expect("empty path")
     }
 
-    pub fn resolve_path_as_type(&self, db: &dyn DefinitionsDatabase, path: &Path) -> Type {
-        let def_map = db.source_file_definitions_map();
+    pub fn resolve_path_in_value_namespace(
+        &self,
+        db: &dyn DefinitionsDatabase,
+        path: &Path,
+    ) -> Option<ValueNamespaceItem> {
+        path.segments
+            .first()
+            .map(|first_name| {
+                self.scopes.iter().rev().find_map(|scope| match scope {
+                    Scope::Module { definitions_map } => {
+                        definitions_map.resolve_path(db, path).in_value_namespace()
+                    }
+                    Scope::Expression {
+                        scope_map,
+                        scope_id,
+                    } if path.segments.len() == 1 => {
+                        let scope = &scope_map.scopes[*scope_id];
 
-        let mut segments = path.segments.iter();
-        let type_name = segments.next().unwrap();
-        def_map
-            .item_scope
-            .types
-            .get(type_name)
-            .map(|loc| match loc {
-                LocationId::FunctionLocationId(_) => panic!(),
-                LocationId::TypeLocationId(type_loc) => Type::AbstractDataType(*type_loc),
+                        scope.entries.iter().find_map(|(name, pattern_id)| {
+                            if name == first_name {
+                                Some(ValueNamespaceItem::LocalBinding(*pattern_id))
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                    _ => None,
+                })
             })
-            .or_else(|| {
-                BUILTIN_SCOPE
-                    .iter()
-                    .find_map(|(name, ty)| if name == type_name { Some(ty) } else { None })
-                    .cloned()
-            })
-            .unwrap()
+            .expect("empty path")
     }
 }
 
-pub enum ValueResolution {
+pub enum TypeNamespaceItem {
+    TypeDefinition(TypeLocationId),
+}
+pub enum ValueNamespaceItem {
+    Function(FunctionLocationId),
+    ValueConstructor(ValueConstructorId),
+    /// local binding in expression body
     LocalBinding(PatternId),
 }
 
@@ -1004,13 +1051,13 @@ pub enum Scope {
     },
 }
 
-static BUILTIN_SCOPE: &[(Name, Type)] = &[
+static _BUILTIN_SCOPE: &[(Name, Type)] = &[
     (
-        Name::new_inline("i32"),
+        Name::_new_inline("i32"),
         Type::Scalar(ScalarType::Integer(IntegerKind::I32)),
     ),
     (
-        Name::new_inline("i64"),
+        Name::_new_inline("i64"),
         Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
     ),
 ];
@@ -1059,7 +1106,7 @@ impl ExpressionScopeMap {
         let entries = body
             .parameter_bindings
             .iter()
-            .flat_map(|(pattern_id, _)| {
+            .flat_map(|pattern_id| {
                 let pattern = &body.patterns[*pattern_id];
                 match pattern {
                     Pattern::Path(_) => None,
@@ -1134,6 +1181,13 @@ pub struct InferenceResult {
     pub type_of_pattern: ArenaMap<PatternId, Type>,
 }
 
+impl InferenceResult {
+    pub fn new(db: &dyn HirDatabase, function_id: FunctionLocationId) -> Self {
+        let body = &db.body_of_definition(function_id);
+        InferenceResultFold::fold_function(db, function_id, body).inference_result
+    }
+}
+
 struct InferenceResultFold<'s> {
     pub db: &'s dyn HirDatabase,
     pub function_id: FunctionLocationId,
@@ -1142,7 +1196,7 @@ struct InferenceResultFold<'s> {
 }
 
 impl<'s> InferenceResultFold<'s> {
-    pub fn new(db: &'s dyn HirDatabase, function_id: FunctionLocationId, body: &'s Body) -> Self {
+    fn new_empty(db: &'s dyn HirDatabase, function_id: FunctionLocationId, body: &'s Body) -> Self {
         Self {
             db,
             function_id,
@@ -1154,43 +1208,97 @@ impl<'s> InferenceResultFold<'s> {
         }
     }
 
-    fn collect_expression_type(mut self, expr_id: ExpressionId) -> (Self, Type) {
+    pub fn fold_function(
+        db: &'s dyn HirDatabase,
+        function_id: FunctionLocationId,
+        body: &'s Body,
+    ) -> Self {
+        Self::new_empty(db, function_id, body)
+            .fold_function_parameters()
+            .fold_body_root_expression()
+    }
+
+    fn fold_function_parameters(mut self) -> Self {
+        let function = self.db.function_definition_data(self.function_id);
+        let resolver = Resolver::new_for_function(self.db, self.function_id);
+        let ty_resolver = TypeReferenceResolver::new(self.db, &resolver);
+        let parameter_types = function.parameter_types.iter().map(|type_reference| {
+            ty_resolver
+                .resolve_type_reference(type_reference)
+                .expect("missing parameter type")
+        });
+
+        self = self
+            .body
+            .parameter_bindings
+            .iter()
+            .zip(parameter_types)
+            .fold(self, |fold, (pattern_id, ty)| {
+                fold.fold_pattern(&resolver, *pattern_id, ty)
+            });
+
+        self
+    }
+
+    fn fold_pattern(
+        mut self,
+        resolver: &Resolver,
+        pattern_id: PatternId,
+        expected_type: Type,
+    ) -> Self {
+        let ty = match &self.body.patterns[pattern_id] {
+            Pattern::Path(path) => {
+                let path_resolver =
+                    ValuePathResolver::new(self.db, &self.inference_result, resolver);
+                path_resolver.resolve_type_for_value_path(path)
+            }
+            Pattern::Bind(_) => expected_type,
+        };
+        self.inference_result.type_of_pattern.insert(pattern_id, ty);
+        self
+    }
+
+    fn fold_body_root_expression(self) -> Self {
+        let root_expression = self.body.root_expression;
+        let (fold, ty) = self.fold_expression_type(root_expression);
+        let ret_ty = fold
+            .db
+            .function_definition_signature(fold.function_id)
+            .return_type;
+        if ty != ret_ty {
+            panic!("expected {:?} found {:?}", ret_ty, ty);
+        }
+        fold
+    }
+
+    fn fold_expression_type(self, expr_id: ExpressionId) -> (Self, Type) {
         let expr = &self.body.expressions[expr_id];
-        match expr {
+        let (mut fold, ty) = match expr {
             Expression::Block {
                 trailing_expression,
-            } => {
-                let (mut fold, ty) = self.collect_expression_type(*trailing_expression);
-                fold.inference_result
-                    .type_of_expression
-                    .insert(expr_id, ty.clone());
-                (fold, ty)
-            }
+            } => self.fold_expression_type(*trailing_expression),
             Expression::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                let (fold, condition_ty) = self.collect_expression_type(*condition);
-                let (fold, then_ty) = fold.collect_expression_type(*then_branch);
-                let (mut fold, else_ty) = fold.collect_expression_type(*else_branch);
+                let (fold, condition_ty) = self.fold_expression_type(*condition);
+                let (fold, then_ty) = fold.fold_expression_type(*then_branch);
+                let (fold, else_ty) = fold.fold_expression_type(*else_branch);
 
                 if condition_ty != Type::Scalar(ScalarType::Boolean) {
-                    panic!();
+                    panic!("condition is not boolean");
                 }
 
                 if then_ty != else_ty {
                     panic!("mismatching types of then and else branches");
                 }
 
-                fold.inference_result
-                    .type_of_expression
-                    .insert(expr_id, then_ty.clone());
                 (fold, then_ty)
             }
             Expression::Binary(op, lhs, rhs) => {
-                let (fold, lhs_ty) = self.collect_expression_type(*lhs);
-                let (mut fold, rhs_ty) = fold.collect_expression_type(*rhs);
+                let (fold, lhs_ty) = self.fold_expression_type(*lhs);
+                let (fold, rhs_ty) = fold.fold_expression_type(*rhs);
 
                 if lhs_ty != rhs_ty {
                     panic!()
@@ -1198,51 +1306,27 @@ impl<'s> InferenceResultFold<'s> {
 
                 let ret_ty = match op {
                     BinaryOperator::Arithmetic(_) => match rhs_ty {
-                        Type::Scalar(ScalarType::Integer(_)) => rhs_ty.clone(),
+                        Type::Scalar(ScalarType::Integer(_)) => rhs_ty,
                         _ => panic!(),
                     },
                     BinaryOperator::Compare(_) => Type::Scalar(ScalarType::Boolean),
                 };
 
-                fold.inference_result
-                    .type_of_expression
-                    .insert(expr_id, ret_ty.clone());
                 (fold, ret_ty)
             }
             Expression::Unary(op, expr) => match op {
-                UnaryOperator::Minus => {
-                    let (mut fold, ty) = self.collect_expression_type(*expr);
-                    fold.inference_result
-                        .type_of_expression
-                        .insert(expr_id, ty.clone());
-                    (fold, ty)
-                }
+                UnaryOperator::Minus => self.fold_expression_type(*expr),
             },
             Expression::Match { matchee, case_list } => {
-                let (fold, matchee_type) = self.collect_expression_type(*matchee);
+                let (fold, matchee_type) = self.fold_expression_type(*matchee);
 
                 let (fold, case_types) = case_list.iter().fold(
                     (fold, Vec::new()),
-                    |(mut fold, mut case_types), (pattern_id, case)| {
-                        match &fold.body.patterns[*pattern_id] {
-                            Pattern::Path(path) => {
-                                let scope_map = fold.db.expression_scope_map(fold.function_id);
-                                let resolver =
-                                    Resolver::new_for_function(fold.db, fold.function_id);
-                                let scope_id = scope_map.scope_map.get(&expr_id).unwrap();
-                                let scope = &scope_map.scopes[*scope_id];
-
-                                let ty = resolver.resolve_path_as_type(fold.db.upcast(), path);
-                                fold.inference_result
-                                    .type_of_pattern
-                                    .insert(*pattern_id, ty);
-                            }
-                            Pattern::Bind(_) => fold
-                                .inference_result
-                                .type_of_pattern
-                                .insert(*pattern_id, matchee_type.clone()),
-                        };
-                        let (fold, case_type) = fold.collect_expression_type(*case);
+                    |(fold, mut case_types), (pattern_id, case)| {
+                        let resolver =
+                            Resolver::new_for_expression(fold.db, fold.function_id, expr_id);
+                        let fold = fold.fold_pattern(&resolver, *pattern_id, matchee_type.clone());
+                        let (fold, case_type) = fold.fold_expression_type(*case);
                         case_types.push(case_type);
                         (fold, case_types)
                     },
@@ -1272,28 +1356,24 @@ impl<'s> InferenceResultFold<'s> {
                         None => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
                     },
                 };
-                self.inference_result
-                    .type_of_expression
-                    .insert(expr_id, ty.clone());
                 (self, ty)
             }
             Expression::Path(path) => {
-                let resolver = Resolver::new_for_function(self.db, self.function_id);
-                let ty = resolver.resolve_path_as_type(self.db.upcast(), path);
-                self.inference_result
-                    .type_of_expression
-                    .insert(expr_id, ty.clone());
+                let resolver = Resolver::new_for_expression(self.db, self.function_id, expr_id);
+                let path_resolver =
+                    ValuePathResolver::new(self.db, &self.inference_result, &resolver);
+                let ty = path_resolver.resolve_type_for_value_path(path);
                 (self, ty)
             }
             Expression::Call { callee, arguments } => {
-                let (fold, callee_type) = self.collect_expression_type(*callee);
+                let (fold, callee_type) = self.fold_expression_type(*callee);
                 match callee_type {
                     Type::FunctionDefinition(f_id) => {
                         let sig = fold.db.function_definition_signature(f_id);
-                        let (mut fold, arg_tys) = arguments.iter().fold(
+                        let (fold, arg_tys) = arguments.iter().fold(
                             (fold, Vec::new()),
                             |(fold, mut arguments), arg| {
-                                let (fold, arg_ty) = fold.collect_expression_type(*arg);
+                                let (fold, arg_ty) = fold.fold_expression_type(*arg);
                                 arguments.push(arg_ty);
                                 (fold, arguments)
                             },
@@ -1301,15 +1381,92 @@ impl<'s> InferenceResultFold<'s> {
                         if sig.parameter_types != arg_tys {
                             panic!("type of parameters to function call do not match the parameters in the function definition")
                         };
-                        let ret_ty = sig.return_type;
-                        fold.inference_result
-                            .type_of_expression
-                            .insert(expr_id, ret_ty.clone());
-                        (fold, ret_ty)
+                        (fold, sig.return_type)
                     }
                     x => panic!("function call not implemented for {:?} type", x),
                 }
             }
+        };
+        fold.inference_result
+            .type_of_expression
+            .insert(expr_id, ty.clone());
+        (fold, ty)
+    }
+}
+
+struct TypeReferenceResolver<'d> {
+    db: &'d dyn HirDatabase,
+    resolver: &'d Resolver,
+}
+
+impl<'d> TypeReferenceResolver<'d> {
+    pub fn new(db: &'d dyn HirDatabase, resolver: &'d Resolver) -> Self {
+        Self { db, resolver }
+    }
+
+    pub fn resolve_type_reference(&self, type_reference: &TypeReference) -> Option<Type> {
+        let ty = match type_reference {
+            TypeReference::Path(path) => {
+                let typed_item = self
+                    .resolver
+                    .resolve_path_in_type_namespace(self.db.upcast(), path)?;
+
+                let typable = match typed_item {
+                    TypeNamespaceItem::TypeDefinition(id) => TypableDefinitionId::Type(id),
+                };
+
+                self.db.type_of_definition(typable)
+            }
+        };
+        Some(ty)
+    }
+}
+
+struct ValuePathResolver<'d> {
+    db: &'d dyn HirDatabase,
+    resolver: &'d Resolver,
+    inference_result: &'d InferenceResult,
+}
+
+impl<'d> ValuePathResolver<'d> {
+    pub fn new(
+        db: &'d dyn HirDatabase,
+        inference_result: &'d InferenceResult,
+        resolver: &'d Resolver,
+    ) -> Self {
+        Self {
+            db,
+            resolver,
+            inference_result,
         }
+    }
+
+    pub fn resolve_type_for_value_path(&self, path: &Path) -> Type {
+        let value_item = self
+            .resolver
+            .resolve_path_in_value_namespace(self.db.upcast(), path)
+            .unwrap();
+
+        let ty = match value_item {
+            ValueNamespaceItem::LocalBinding(pattern_id) => self
+                .inference_result
+                .type_of_pattern
+                .get(pattern_id)
+                .expect("pattern has no type")
+                .clone(),
+            non_local_item => {
+                let typable_value = match non_local_item {
+                    ValueNamespaceItem::Function(id) => TypableValueDefinitionId::Function(id),
+                    ValueNamespaceItem::ValueConstructor(id) => {
+                        TypableValueDefinitionId::ValueConstructor(id)
+                    }
+                    _ => panic!(),
+                };
+
+                self.db.type_of_value(typable_value)
+            }
+        };
+
+        ty
     }
 }
