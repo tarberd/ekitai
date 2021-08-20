@@ -9,5 +9,5 @@ edition = "2018"
 [dependencies]
 hir = { path = "../hir" }
 smol_str = "0.1.17"
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm12-0"] }
+inkwell = { git = "https://github.com/tarberd/inkwell", branch = "feature_type_attributes", features = ["llvm12-0"] }
 salsa = "0.16.1"

@@ -1,6 +1,6 @@
 use la_arena::{Arena, ArenaMap, Idx};
 use smol_str::SmolStr;
-use std::{collections::HashMap, convert::TryFrom, marker::PhantomData};
+use std::{collections::HashMap, convert::TryFrom, fmt::Debug, marker::PhantomData};
 use syntax::{
     cst::{self, raw::SyntaxNodePointer, CstNode},
     Parse,
@@ -214,7 +214,7 @@ fn type_definition_data(db: &dyn DefinitionsDatabase, id: TypeLocationId) -> Typ
 
 #[salsa::query_group(HirDatabaseStorage)]
 pub trait HirDatabase: DefinitionsDatabase + Upcast<dyn DefinitionsDatabase> {
-    fn type_of_definition(&self, definition: TypableDefinitionId) -> Type;
+    fn type_of_definition(&self, definition: TypableDefinition) -> Type;
 
     fn type_of_value(&self, id: TypableValueDefinitionId) -> Type;
 
@@ -225,9 +225,15 @@ pub trait HirDatabase: DefinitionsDatabase + Upcast<dyn DefinitionsDatabase> {
     fn infer_body_expression_types(&self, function: FunctionLocationId) -> InferenceResult;
 }
 
-fn type_of_definition(_db: &dyn HirDatabase, definition: TypableDefinitionId) -> Type {
+fn type_of_definition(_db: &dyn HirDatabase, definition: TypableDefinition) -> Type {
     match definition {
-        TypableDefinitionId::Type(type_def_location) => Type::AbstractDataType(type_def_location),
+        TypableDefinition::Type(type_def_location) => Type::AbstractDataType(type_def_location),
+        TypableDefinition::Builtin(builtin) => match builtin {
+            BuiltinType::Integer(int) => match int {
+                BuiltinInteger::I32 => Type::Scalar(ScalarType::Integer(IntegerKind::I32)),
+                BuiltinInteger::I64 => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+            },
+        },
     }
 }
 
@@ -236,9 +242,9 @@ fn type_of_value(_db: &dyn HirDatabase, value: TypableValueDefinitionId) -> Type
         TypableValueDefinitionId::Function(function_location_id) => {
             Type::FunctionDefinition(function_location_id)
         }
-        TypableValueDefinitionId::ValueConstructor(ValueConstructorId {
-            parrent_id,
-        }) => Type::AbstractDataType(parrent_id),
+        TypableValueDefinitionId::ValueConstructor(ValueConstructorId { parrent_id, .. }) => {
+            Type::AbstractDataType(parrent_id)
+        }
     }
 }
 
@@ -339,22 +345,24 @@ impl DefinitionsMap {
                         resolution
                             .in_type_namespace()
                             .map(|typable_item| match typable_item {
-                                TypeNamespaceItem::TypeDefinition(id) => {
-                                    let ty_data = db.type_definition_data(id);
+                                TypeNamespaceItem::TypeDefinition(type_id) => {
+                                    let ty_data = db.type_definition_data(type_id);
                                     let value = ty_data
                                         .value_constructors
                                         .iter()
-                                        .find(|constructor| constructor.name == *name)
-                                        .map(|_constructor| {
+                                        .find(|(_, constructor)| constructor.name == *name)
+                                        .map(|(id, _)| {
                                             ValueNamespaceItem::ValueConstructor(
                                                 ValueConstructorId {
-                                                    parrent_id: id,
+                                                    parrent_id: type_id,
+                                                    id,
                                                 },
                                             )
                                         });
 
                                     NamespaceResolution::new(None, value)
                                 }
+                                TypeNamespaceItem::Builtin(_) => todo!(),
                             })
                     })
             })
@@ -362,7 +370,15 @@ impl DefinitionsMap {
     }
 
     fn resolve_name(&self, name: &Name) -> NamespaceResolution {
-        self.item_scope.get(name)
+        let builtin_type = BUILTIN_SCOPE
+            .iter()
+            .find_map(|(builtin_name, builtin_type)| match builtin_name == name {
+                true => Some((*builtin_type).into()),
+                false => None,
+            });
+        self.item_scope
+            .get(name)
+            .or(NamespaceResolution::new(builtin_type, None))
     }
 }
 
@@ -389,6 +405,13 @@ impl NamespaceResolution {
 
     fn in_value_namespace(self) -> Option<ValueNamespaceItem> {
         self.value_resolution
+    }
+
+    fn or(self, resolution: Self) -> Self {
+        Self {
+            type_resolution: self.type_resolution.or(resolution.type_resolution),
+            value_resolution: self.value_resolution.or(resolution.value_resolution),
+        }
     }
 }
 
@@ -418,12 +441,21 @@ impl ItemScope {
 pub enum LocationId {
     FunctionLocationId(FunctionLocationId),
     TypeLocationId(TypeLocationId),
-    TypeConstructorId(TypeLocationId, ValueConstructor),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypableDefinitionId {
+pub enum TypableDefinition {
     Type(TypeLocationId),
+    Builtin(BuiltinType),
+}
+
+impl From<TypeNamespaceItem> for TypableDefinition {
+    fn from(typable_item: TypeNamespaceItem) -> Self {
+        match typable_item {
+            TypeNamespaceItem::TypeDefinition(ty_def) => Self::Type(ty_def),
+            TypeNamespaceItem::Builtin(builtin) => Self::Builtin(builtin),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -456,14 +488,14 @@ pub type TypeDefinitionId = Idx<TypeDefinition>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeDefinition {
     pub name: Name,
-    pub value_constructors: Vec<ValueConstructor>,
+    pub value_constructors: Arena<ValueConstructor>,
     pub cst_id: CstId<cst::TypeDefinition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeDefinitionData {
     pub name: Name,
-    pub value_constructors: Vec<ValueConstructor>,
+    pub value_constructors: Arena<ValueConstructor>,
 }
 
 impl TypeDefinition {
@@ -484,6 +516,7 @@ impl TypeDefinition {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ValueConstructorId {
     pub parrent_id: TypeLocationId,
+    pub id: Idx<ValueConstructor>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -883,7 +916,7 @@ impl Name {
         }
     }
 
-    const fn _new_inline(name: &str) -> Self {
+    const fn new_inline(name: &str) -> Self {
         Self {
             id: SmolStr::new_inline(name),
         }
@@ -1017,10 +1050,9 @@ impl Resolver {
                         let scope = &scope_map.scopes[*scope_id];
 
                         scope.entries.iter().find_map(|(name, pattern_id)| {
-                            if name == first_name {
-                                Some(ValueNamespaceItem::LocalBinding(*pattern_id))
-                            } else {
-                                None
+                            match name == first_name {
+                                true => Some(ValueNamespaceItem::LocalBinding(*pattern_id)),
+                                false => None,
                             }
                         })
                     }
@@ -1033,7 +1065,22 @@ impl Resolver {
 
 pub enum TypeNamespaceItem {
     TypeDefinition(TypeLocationId),
+    Builtin(BuiltinType),
 }
+
+impl From<TypeLocationId> for TypeNamespaceItem {
+    fn from(type_location: TypeLocationId) -> Self {
+        Self::TypeDefinition(type_location)
+    }
+}
+
+impl From<BuiltinType> for TypeNamespaceItem {
+    fn from(builtin: BuiltinType) -> Self {
+        Self::Builtin(builtin)
+    }
+}
+
+#[derive(Debug)]
 pub enum ValueNamespaceItem {
     Function(FunctionLocationId),
     ValueConstructor(ValueConstructorId),
@@ -1051,14 +1098,25 @@ pub enum Scope {
     },
 }
 
-static _BUILTIN_SCOPE: &[(Name, Type)] = &[
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BuiltinType {
+    Integer(BuiltinInteger),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BuiltinInteger {
+    I32,
+    I64,
+}
+
+static BUILTIN_SCOPE: &[(Name, BuiltinType)] = &[
     (
-        Name::_new_inline("i32"),
-        Type::Scalar(ScalarType::Integer(IntegerKind::I32)),
+        Name::new_inline("i32"),
+        BuiltinType::Integer(BuiltinInteger::I32),
     ),
     (
-        Name::_new_inline("i64"),
-        Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+        Name::new_inline("i64"),
+        BuiltinType::Integer(BuiltinInteger::I64),
     ),
 ];
 
@@ -1411,11 +1469,7 @@ impl<'d> TypeReferenceResolver<'d> {
                     .resolver
                     .resolve_path_in_type_namespace(self.db.upcast(), path)?;
 
-                let typable = match typed_item {
-                    TypeNamespaceItem::TypeDefinition(id) => TypableDefinitionId::Type(id),
-                };
-
-                self.db.type_of_definition(typable)
+                self.db.type_of_definition(typed_item.into())
             }
         };
         Some(ty)
