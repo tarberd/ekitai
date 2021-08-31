@@ -540,6 +540,10 @@ impl<'ink> ExpressionLowerer<'ink> {
                         };
                         self.builder.build_int_compare(predicate, lhs, rhs, "")
                     }
+                    hir::BinaryOperator::Logic(logic_op) => match logic_op {
+                        hir::LogicOperator::And => self.builder.build_and(lhs, rhs, ""),
+                        hir::LogicOperator::Or => self.builder.build_or(lhs, rhs, ""),
+                    },
                 };
                 int_value.into()
             }
@@ -554,6 +558,9 @@ impl<'ink> ExpressionLowerer<'ink> {
                             "",
                         )
                         .into(),
+                    hir::UnaryOperator::Negation => {
+                        self.builder.build_not(expr.into_int_value(), "").into()
+                    }
                 }
             }
             hir::Expression::Path(path) => {

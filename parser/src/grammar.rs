@@ -203,19 +203,23 @@ enum InfixOp {
     LessEquals,
     Greater,
     GreaterEquals,
+    And,
+    Or,
 }
 
 impl InfixOp {
     fn binding_power(&self) -> (u8, u8) {
+        // 2 + 2 == 5 ||
         match self {
-            Self::Add | Self::Sub => (1, 2),
-            Self::Mul | Self::Div | Self::Rest => (3, 4),
+            Self::And | Self::Or => (1, 2),
             Self::Equals
             | Self::NotEquals
             | Self::Less
             | Self::LessEquals
             | Self::Greater
-            | Self::GreaterEquals => (0, 0),
+            | Self::GreaterEquals => (3, 4),
+            Self::Add | Self::Sub => (5, 6),
+            Self::Mul | Self::Div | Self::Rest => (7, 8),
         }
     }
 }
@@ -253,6 +257,10 @@ fn expression_binding_power<S: TokenSource>(
             InfixOp::Greater
         } else if p.at(GreaterEquals) {
             InfixOp::GreaterEquals
+        } else if p.at(DoublePipe) {
+            InfixOp::Or
+        } else if p.at(DoubleAmpersand) {
+            InfixOp::And
         } else {
             // We’re not at an operator; we don’t know what to do next, so we return and let the
             // caller decide.
@@ -285,7 +293,7 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
         literal(p)
     } else if p.at(Identifier) {
         path_expression(p)
-    } else if p.at(Minus) {
+    } else if p.at(Minus) || p.at(Exclamation) {
         prefix_expression(p)
     } else if p.at(OpenParenthesis) {
         parenthesis_expression(p)
@@ -355,8 +363,6 @@ fn path_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
 }
 
 fn prefix_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
-    assert!(p.at(Minus));
-
     let m = p.start();
 
     let op = PrefixOp::Neg;

@@ -51,6 +51,10 @@ pub enum TokenKind {
     GreaterEquals,
     #[token("<=")]
     LessEquals,
+    #[token("||")]
+    DoublePipe,
+    #[token("&&")]
+    DoubleAmpersand,
     #[token("->")]
     ThinArrow,
     #[token("=>")]
@@ -246,6 +250,16 @@ mod tests {
     #[test]
     fn lex_less_equals() {
         check("<=", TokenKind::LessEquals);
+    }
+
+    #[test]
+    fn lex_double_ampersand() {
+        check("&&", TokenKind::DoubleAmpersand);
+    }
+
+    #[test]
+    fn lex_double_pipe() {
+        check("||", TokenKind::DoublePipe);
     }
 
     #[test]

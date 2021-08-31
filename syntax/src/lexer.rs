@@ -70,6 +70,8 @@ fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
         TokenKind::GreaterEquals => SyntaxKind::GreaterEquals,
         TokenKind::Less => SyntaxKind::Less,
         TokenKind::LessEquals => SyntaxKind::LessEquals,
+        TokenKind::DoublePipe => SyntaxKind::DoublePipe,
+        TokenKind::DoubleAmpersand => SyntaxKind::DoubleAmpersand,
         TokenKind::ThinArrow => SyntaxKind::ThinArrow,
         TokenKind::FnKw => SyntaxKind::FnKw,
         TokenKind::IfKw => SyntaxKind::IfKw,

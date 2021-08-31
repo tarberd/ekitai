@@ -31,6 +31,8 @@ pub enum SyntaxKind {
     LessEquals,
     Greater,
     GreaterEquals,
+    DoublePipe,
+    DoubleAmpersand,
     ThinArrow,
     FatArrow,
     FnKw,

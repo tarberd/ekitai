@@ -218,8 +218,6 @@ pub trait HirDatabase: DefinitionsDatabase + Upcast<dyn DefinitionsDatabase> {
 
     fn type_of_value(&self, id: TypableValueDefinitionId) -> Type;
 
-    // fn value_constructor_filds(&self, id: ValueConstructorId) -> ArenaMap<FildId, TypeKind>;
-
     fn function_definition_signature(&self, function: FunctionLocationId) -> FunctionSignature;
 
     fn infer_body_expression_types(&self, function: FunctionLocationId) -> InferenceResult;
@@ -693,6 +691,8 @@ impl BodyExpressionFold {
                     strict: false,
                 })
             }
+            cst::BinaryOperator::DoubleAmpersand(_) => BinaryOperator::Logic(LogicOperator::And),
+            cst::BinaryOperator::DoublePipe(_) => BinaryOperator::Logic(LogicOperator::Or),
         };
 
         let bin_expr = Expression::Binary(op, lhs, rhs);
@@ -712,6 +712,7 @@ impl BodyExpressionFold {
             .expect("missing operator from infix expression")
         {
             cst::UnaryOperator::Minus(_) => UnaryOperator::Minus,
+            cst::UnaryOperator::Exclamation(_) => UnaryOperator::Negation,
         };
 
         let unary_expr = Expression::Unary(op, inner);
@@ -875,6 +876,7 @@ pub enum Literal {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinaryOperator {
     Arithmetic(ArithmeticOperator),
+    Logic(LogicOperator),
     Compare(CompareOperator),
 }
 
@@ -885,6 +887,12 @@ pub enum ArithmeticOperator {
     Div,
     Mul,
     Rem,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogicOperator {
+    And,
+    Or,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -902,6 +910,7 @@ pub enum Ordering {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnaryOperator {
     Minus,
+    Negation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1376,12 +1385,14 @@ impl<'s> InferenceResultFold<'s> {
                         _ => panic!(),
                     },
                     BinaryOperator::Compare(_) => Type::Scalar(ScalarType::Boolean),
+                    BinaryOperator::Logic(_) => Type::Scalar(ScalarType::Boolean),
                 };
 
                 (fold, ret_ty)
             }
             Expression::Unary(op, expr) => match op {
                 UnaryOperator::Minus => self.fold_expression_type(*expr),
+                UnaryOperator::Negation => self.fold_expression_type(*expr),
             },
             Expression::Match { matchee, case_list } => {
                 let (fold, matchee_type) = self.fold_expression_type(*matchee);

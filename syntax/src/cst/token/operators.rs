@@ -11,7 +11,7 @@ impl CstToken for Plus {
 }
 
 impl Plus {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Plus
     }
 
@@ -47,7 +47,7 @@ impl CstToken for Minus {
 }
 
 impl Minus {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Minus
     }
 
@@ -83,7 +83,7 @@ impl CstToken for Asterisk {
 }
 
 impl Asterisk {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Asterisk
     }
 
@@ -119,7 +119,7 @@ impl CstToken for Slash {
 }
 
 impl Slash {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Slash
     }
 
@@ -155,7 +155,7 @@ impl CstToken for Percent {
 }
 
 impl Percent {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Percent
     }
 
@@ -191,7 +191,7 @@ impl CstToken for DoubleEquals {
 }
 
 impl DoubleEquals {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::DoubleEquals
     }
 
@@ -218,6 +218,42 @@ impl std::convert::TryFrom<SyntaxToken> for DoubleEquals {
 }
 
 #[derive(Debug)]
+pub struct Exclamation(SyntaxToken);
+
+impl CstToken for Exclamation {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl Exclamation {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::Exclamation
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for Exclamation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for Exclamation {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct ExclamationEquals(SyntaxToken);
 
 impl CstToken for ExclamationEquals {
@@ -227,7 +263,7 @@ impl CstToken for ExclamationEquals {
 }
 
 impl ExclamationEquals {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::ExclamationEquals
     }
 
@@ -263,7 +299,7 @@ impl CstToken for Greater {
 }
 
 impl Greater {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Greater
     }
 
@@ -299,7 +335,7 @@ impl CstToken for GreaterEquals {
 }
 
 impl GreaterEquals {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::GreaterEquals
     }
 
@@ -335,7 +371,7 @@ impl CstToken for Less {
 }
 
 impl Less {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Less
     }
 
@@ -371,7 +407,7 @@ impl CstToken for LessEquals {
 }
 
 impl LessEquals {
-    pub(crate) fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::LessEquals
     }
 
@@ -398,6 +434,78 @@ impl std::convert::TryFrom<SyntaxToken> for LessEquals {
 }
 
 #[derive(Debug)]
+pub struct DoubleAmpersand(SyntaxToken);
+
+impl CstToken for DoubleAmpersand {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl DoubleAmpersand {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::DoubleAmpersand
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for DoubleAmpersand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for DoubleAmpersand {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct DoublePipe(SyntaxToken);
+
+impl CstToken for DoublePipe {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl DoublePipe {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::DoublePipe
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for DoublePipe {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for DoublePipe {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum BinaryOperator {
     Plus(Plus),
     Minus(Minus),
@@ -410,6 +518,8 @@ pub enum BinaryOperator {
     GreaterEquals(GreaterEquals),
     Less(Less),
     LessEquals(LessEquals),
+    DoubleAmpersand(DoubleAmpersand),
+    DoublePipe(DoublePipe),
 }
 
 impl CstToken for BinaryOperator {
@@ -426,41 +536,51 @@ impl CstToken for BinaryOperator {
             Self::GreaterEquals(tok) => tok.as_syntax_token(),
             Self::Less(tok) => tok.as_syntax_token(),
             Self::LessEquals(tok) => tok.as_syntax_token(),
+            Self::DoubleAmpersand(tok) => tok.as_syntax_token(),
+            Self::DoublePipe(tok) => tok.as_syntax_token(),
         }
     }
 }
 
 impl BinaryOperator {
-    fn syntax_kind_set() -> &'static [SyntaxKind] {
-        static KINDS: &[SyntaxKind] = &[
-            SyntaxKind::Plus,
-            SyntaxKind::Minus,
-            SyntaxKind::Asterisk,
-            SyntaxKind::Slash,
-            SyntaxKind::Percent,
-            SyntaxKind::DoubleEquals,
-            SyntaxKind::ExclamationEquals,
-            SyntaxKind::Less,
-            SyntaxKind::LessEquals,
-            SyntaxKind::Greater,
-            SyntaxKind::GreaterEquals,
+    const fn syntax_kind_set() -> &'static [SyntaxKind] {
+        const KINDS: &[SyntaxKind] = &[
+            Plus::syntax_kind(),
+            Minus::syntax_kind(),
+            Asterisk::syntax_kind(),
+            Slash::syntax_kind(),
+            Percent::syntax_kind(),
+            DoubleEquals::syntax_kind(),
+            ExclamationEquals::syntax_kind(),
+            Less::syntax_kind(),
+            LessEquals::syntax_kind(),
+            Greater::syntax_kind(),
+            GreaterEquals::syntax_kind(),
+            DoubleAmpersand::syntax_kind(),
+            DoublePipe::syntax_kind(),
         ];
         KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxToken) -> Self {
         match raw.kind() {
-            SyntaxKind::Plus => Self::Plus(Plus(raw)),
-            SyntaxKind::Minus => Self::Minus(Minus(raw)),
-            SyntaxKind::Asterisk => Self::Asterisk(Asterisk(raw)),
-            SyntaxKind::Slash => Self::Slash(Slash(raw)),
-            SyntaxKind::Percent => Self::Percent(Percent(raw)),
-            SyntaxKind::DoubleEquals => Self::DoubleEquals(DoubleEquals(raw)),
-            SyntaxKind::ExclamationEquals => Self::ExclamationEquals(ExclamationEquals(raw)),
-            SyntaxKind::Less => Self::Less(Less(raw)),
-            SyntaxKind::LessEquals => Self::LessEquals(LessEquals(raw)),
-            SyntaxKind::Greater => Self::Greater(Greater(raw)),
-            SyntaxKind::GreaterEquals => Self::GreaterEquals(GreaterEquals(raw)),
+            kind if kind == Plus::syntax_kind() => Self::Plus(Plus(raw)),
+            kind if kind == Minus::syntax_kind() => Self::Minus(Minus(raw)),
+            kind if kind == Asterisk::syntax_kind() => Self::Asterisk(Asterisk(raw)),
+            kind if kind == Slash::syntax_kind() => Self::Slash(Slash(raw)),
+            kind if kind == Percent::syntax_kind() => Self::Percent(Percent(raw)),
+            kind if kind == DoubleEquals::syntax_kind() => Self::DoubleEquals(DoubleEquals(raw)),
+            kind if kind == ExclamationEquals::syntax_kind() => {
+                Self::ExclamationEquals(ExclamationEquals(raw))
+            }
+            kind if kind == Less::syntax_kind() => Self::Less(Less(raw)),
+            kind if kind == LessEquals::syntax_kind() => Self::LessEquals(LessEquals(raw)),
+            kind if kind == Greater::syntax_kind() => Self::Greater(Greater(raw)),
+            kind if kind == GreaterEquals::syntax_kind() => Self::GreaterEquals(GreaterEquals(raw)),
+            kind if kind == DoubleAmpersand::syntax_kind() => {
+                Self::DoubleAmpersand(DoubleAmpersand(raw))
+            }
+            kind if kind == DoublePipe::syntax_kind() => Self::DoublePipe(DoublePipe(raw)),
             _ => panic!(),
         }
     }
@@ -486,25 +606,28 @@ impl std::convert::TryFrom<SyntaxToken> for BinaryOperator {
 #[derive(Debug)]
 pub enum UnaryOperator {
     Minus(Minus),
+    Exclamation(Exclamation),
 }
 
 impl CstToken for UnaryOperator {
     fn as_syntax_token(&self) -> &SyntaxToken {
         match self {
             Self::Minus(tok) => tok.as_syntax_token(),
+            Self::Exclamation(tok) => tok.as_syntax_token(),
         }
     }
 }
 
 impl UnaryOperator {
-    fn syntax_kind_set() -> &'static [SyntaxKind] {
-        static KINDS: &[SyntaxKind] = &[SyntaxKind::Minus];
+    const fn syntax_kind_set() -> &'static [SyntaxKind] {
+        const KINDS: &[SyntaxKind] = &[Minus::syntax_kind(), Exclamation::syntax_kind()];
         KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxToken) -> Self {
         match raw.kind() {
-            SyntaxKind::Minus => Self::Minus(Minus(raw)),
+            kind if kind == Minus::syntax_kind() => Self::Minus(Minus(raw)),
+            kind if kind == Exclamation::syntax_kind() => Self::Exclamation(Exclamation(raw)),
             _ => panic!(),
         }
     }
