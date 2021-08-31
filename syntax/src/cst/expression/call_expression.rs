@@ -11,7 +11,7 @@ impl CstNode for CallExpression {
 }
 
 impl CallExpression {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::CallExpression
     }
 

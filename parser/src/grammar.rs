@@ -281,7 +281,7 @@ fn expression_binding_power<S: TokenSource>(
 }
 
 fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
-    let lhs = if p.at(Integer) {
+    let lhs = if p.at(Integer) || p.at(TrueKw) || p.at(FalseKw) {
         literal(p)
     } else if p.at(Identifier) {
         path_expression(p)
@@ -343,7 +343,6 @@ fn argument_list<S: TokenSource>(p: &mut Parser<S>) {
 }
 
 fn literal<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
-    assert!(p.at(Integer));
     let m = p.start();
     p.bump();
     m.complete(p, SyntaxKind::Literal)

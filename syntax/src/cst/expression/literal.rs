@@ -1,20 +1,20 @@
-use crate::cst::{raw::SyntaxNode, CstNode, LiteralKind, SyntaxToAstError};
+use crate::cst::{raw::SyntaxNode, CstNode, SyntaxToAstError, TokenLiteral};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
 pub struct Literal(pub(super) SyntaxNode);
 
 impl Literal {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Literal
     }
 
-    pub fn literal_kind(&self) -> LiteralKind {
+    pub fn literal_kind(&self) -> TokenLiteral {
         use std::convert::TryFrom;
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
-            .find_map(|tok| LiteralKind::try_from(tok).ok())
+            .find_map(|tok| TokenLiteral::try_from(tok).ok())
             .unwrap()
     }
 }

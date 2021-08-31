@@ -11,7 +11,7 @@ impl CstNode for BlockExpression {
 }
 
 impl BlockExpression {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::BlockExpression
     }
 

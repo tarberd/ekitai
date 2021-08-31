@@ -11,7 +11,7 @@ impl CstNode for NameReference {
 }
 
 impl NameReference {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::NameReference
     }
 

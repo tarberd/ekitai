@@ -11,7 +11,7 @@ impl CstNode for Path {
 }
 
 impl Path {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::Path
     }
 

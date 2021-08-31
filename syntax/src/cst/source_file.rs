@@ -18,7 +18,7 @@ impl SourceFile {
             .filter_map(|s| ModuleItem::try_from(s).ok())
     }
 
-    fn syntax_kind() -> SyntaxKind {
+    const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::SourceFile
     }
 }

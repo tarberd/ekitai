@@ -5,7 +5,7 @@ use parser::SyntaxKind;
 pub struct InfixExpression(pub(super) SyntaxNode);
 
 impl InfixExpression {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::InfixExpression
     }
 

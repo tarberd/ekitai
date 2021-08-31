@@ -5,7 +5,6 @@ mod name;
 mod name_ref;
 mod path;
 mod pattern;
-pub mod pointer;
 pub mod raw;
 mod source_file;
 mod token;
@@ -14,7 +13,7 @@ mod type_definition;
 
 pub use expression::{
     BlockExpression, CallExpression, Expression, IfExpression, InfixExpression, Literal, MatchCase,
-    MatchCaseList, MatchExpression, PrefixExpression, PathExpression
+    MatchCaseList, MatchExpression, PathExpression, PrefixExpression,
 };
 pub use function_definition::{FunctionDefinition, Parameter, ParameterList};
 pub use module_item::ModuleItem;
@@ -24,8 +23,8 @@ pub use path::{Path, PathSegment};
 pub use pattern::{IdentifierPattern, PathPattern, Pattern};
 pub use source_file::SourceFile;
 pub use token::{
-    Asterisk, BinaryOperator, Identifier, Integer, LiteralKind, Minus, Percent, Plus, Slash,
-    UnaryOperator,
+    Asterisk, BinaryOperator, Boolean, Identifier, Integer, Minus, Percent, Plus, Slash,
+    TokenLiteral, UnaryOperator,
 };
 pub use ty::{PathType, Type};
 pub use type_definition::{TypeDefinition, ValueConstructor, ValueConstructorList};

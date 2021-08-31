@@ -233,6 +233,7 @@ fn type_of_definition(_db: &dyn HirDatabase, definition: TypableDefinition) -> T
                 BuiltinInteger::I32 => Type::Scalar(ScalarType::Integer(IntegerKind::I32)),
                 BuiltinInteger::I64 => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
             },
+            BuiltinType::Boolean => Type::Scalar(ScalarType::Boolean),
         },
     }
 }
@@ -780,7 +781,7 @@ impl BodyExpressionFold {
 
     fn fold_literal_expression(mut self, literal: cst::Literal) -> (Self, ExpressionId) {
         let literal = match literal.literal_kind() {
-            cst::LiteralKind::Integer(integer) => {
+            cst::TokenLiteral::Integer(integer) => {
                 let (radical, suffix) = integer.radical_and_suffix();
 
                 let kind = match suffix {
@@ -810,6 +811,10 @@ impl BodyExpressionFold {
 
                 Literal::Integer(value, kind)
             }
+            cst::TokenLiteral::Boolean(bool_token) => match bool_token {
+                cst::Boolean::True(_) => Literal::Bool(true),
+                cst::Boolean::False(_) => Literal::Bool(false),
+            },
         };
 
         let literal = Expression::Literal(literal);
@@ -864,6 +869,7 @@ pub enum Expression {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Literal {
     Integer(u128, Option<IntegerKind>),
+    Bool(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1101,6 +1107,7 @@ pub enum Scope {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuiltinType {
     Integer(BuiltinInteger),
+    Boolean,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1110,6 +1117,7 @@ pub enum BuiltinInteger {
 }
 
 static BUILTIN_SCOPE: &[(Name, BuiltinType)] = &[
+    (Name::new_inline("bool"), BuiltinType::Boolean),
     (
         Name::new_inline("i32"),
         BuiltinType::Integer(BuiltinInteger::I32),
@@ -1413,6 +1421,7 @@ impl<'s> InferenceResultFold<'s> {
                         Some(int_kind) => Type::Scalar(ScalarType::Integer(int_kind.clone())),
                         None => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
                     },
+                    Literal::Bool(_) => Type::Scalar(ScalarType::Boolean),
                 };
                 (self, ty)
             }

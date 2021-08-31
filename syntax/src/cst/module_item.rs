@@ -17,15 +17,22 @@ impl CstNode for ModuleItem {
 }
 
 impl ModuleItem {
-    fn try_from_set() -> &'static [SyntaxKind] {
-        static KINDS: &[SyntaxKind] = &[SyntaxKind::FunctionDefinition, SyntaxKind::TypeDefinition];
+    fn syntax_kind_set() -> &'static [SyntaxKind] {
+        static KINDS: &[SyntaxKind] = &[
+            FunctionDefinition::syntax_kind(),
+            TypeDefinition::syntax_kind(),
+        ];
         KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {
         match raw.kind() {
-            SyntaxKind::FunctionDefinition => Self::FunctionDefinition(FunctionDefinition(raw)),
-            SyntaxKind::TypeDefinition => Self::TypeDefinition(TypeDefinition(raw)),
+            kind if kind == FunctionDefinition::syntax_kind() => {
+                Self::FunctionDefinition(FunctionDefinition(raw))
+            }
+            kind if kind == TypeDefinition::syntax_kind() => {
+                Self::TypeDefinition(TypeDefinition(raw))
+            }
             _ => panic!(),
         }
     }
@@ -42,8 +49,8 @@ impl std::convert::TryFrom<SyntaxNode> for ModuleItem {
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
         match syntax_node.kind() {
-            x if Self::try_from_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
-            other => Err(Self::Error::new(Self::try_from_set()[0], other)),
+            x if Self::syntax_kind_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind_set()[0], other)),
         }
     }
 }

@@ -17,15 +17,18 @@ impl CstNode for Pattern {
 }
 
 impl Pattern {
-    fn try_from_set() -> &'static [SyntaxKind] {
-        static KINDS: &[SyntaxKind] = &[SyntaxKind::PathPattern, SyntaxKind::IdentifierPattern];
+    const fn syntax_kind_set() -> &'static [SyntaxKind] {
+        const KINDS: &[SyntaxKind] =
+            &[PathPattern::syntax_kind(), IdentifierPattern::syntax_kind()];
         KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {
         match raw.kind() {
-            SyntaxKind::PathPattern => Self::PathPattern(PathPattern(raw)),
-            SyntaxKind::IdentifierPattern => Self::IdentifierPattern(IdentifierPattern(raw)),
+            kind if kind == PathPattern::syntax_kind() => Self::PathPattern(PathPattern(raw)),
+            kind if kind == IdentifierPattern::syntax_kind() => {
+                Self::IdentifierPattern(IdentifierPattern(raw))
+            }
             _ => panic!(),
         }
     }
@@ -42,8 +45,8 @@ impl std::convert::TryFrom<SyntaxNode> for Pattern {
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
         match syntax_node.kind() {
-            x if Self::try_from_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
-            other => Err(Self::Error::new(Self::try_from_set()[0], other)),
+            x if Self::syntax_kind_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind_set()[0], other)),
         }
     }
 }
@@ -58,7 +61,7 @@ impl CstNode for IdentifierPattern {
 }
 
 impl IdentifierPattern {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::IdentifierPattern
     }
 
@@ -97,7 +100,7 @@ impl CstNode for PathPattern {
 }
 
 impl PathPattern {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::PathPattern
     }
 

@@ -1,4 +1,4 @@
-use super::{CstNode, Path, SyntaxToAstError, raw::SyntaxNode};
+use super::{raw::SyntaxNode, CstNode, Path, SyntaxToAstError};
 use parser::SyntaxKind;
 
 #[derive(Debug)]
@@ -15,9 +15,8 @@ impl CstNode for Type {
 }
 
 impl Type {
-    fn try_from_set() -> &'static [SyntaxKind] {
-        static KINDS: &[SyntaxKind] = &[SyntaxKind::PathType];
-        KINDS
+    const fn syntax_kind_set() -> [SyntaxKind; 1] {
+        [PathType::syntax_kind()]
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {
@@ -39,8 +38,8 @@ impl std::convert::TryFrom<SyntaxNode> for Type {
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
         match syntax_node.kind() {
-            x if Self::try_from_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
-            other => Err(Self::Error::new(Self::try_from_set()[0], other)),
+            x if Self::syntax_kind_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind_set()[0], other)),
         }
     }
 }
@@ -55,7 +54,7 @@ impl CstNode for PathType {
 }
 
 impl PathType {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::PathType
     }
 

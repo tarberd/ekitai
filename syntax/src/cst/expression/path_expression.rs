@@ -11,7 +11,7 @@ impl CstNode for PathExpression {
 }
 
 impl PathExpression {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::PathExpression
     }
 

@@ -35,35 +35,47 @@ pub enum Expression {
 }
 
 impl Expression {
-    fn try_from_set() -> &'static [SyntaxKind] {
-        static KINDS: &[SyntaxKind] = &[
-            SyntaxKind::Literal,
-            SyntaxKind::PathExpression,
-            SyntaxKind::BlockExpression,
-            SyntaxKind::InfixExpression,
-            SyntaxKind::PrefixExpression,
-            SyntaxKind::ParenthesisExpression,
-            SyntaxKind::CallExpression,
-            SyntaxKind::IfExpression,
-            SyntaxKind::MatchExpression,
+    const fn syntax_kind_set() -> &'static [SyntaxKind] {
+        const KINDS: &[SyntaxKind] = &[
+            Literal::syntax_kind(),
+            PathExpression::syntax_kind(),
+            BlockExpression::syntax_kind(),
+            InfixExpression::syntax_kind(),
+            PrefixExpression::syntax_kind(),
+            ParenthesisExpression::syntax_kind(),
+            CallExpression::syntax_kind(),
+            IfExpression::syntax_kind(),
+            MatchExpression::syntax_kind(),
         ];
         KINDS
     }
 
     fn from_raw_unchecked(raw: SyntaxNode) -> Self {
         match raw.kind() {
-            SyntaxKind::Literal => Self::Literal(Literal(raw)),
-            SyntaxKind::PathExpression => Self::PathExpression(PathExpression(raw)),
-            SyntaxKind::BlockExpression => Self::BlockExpression(BlockExpression(raw)),
-            SyntaxKind::InfixExpression => Self::InfixExpression(InfixExpression(raw)),
-            SyntaxKind::PrefixExpression => Self::PrefixExpression(PrefixExpression(raw)),
-            SyntaxKind::ParenthesisExpression => {
+            kind if kind == Literal::syntax_kind() => Self::Literal(Literal(raw)),
+            kind if kind == PathExpression::syntax_kind() => {
+                Self::PathExpression(PathExpression(raw))
+            }
+            kind if kind == BlockExpression::syntax_kind() => {
+                Self::BlockExpression(BlockExpression(raw))
+            }
+            kind if kind == InfixExpression::syntax_kind() => {
+                Self::InfixExpression(InfixExpression(raw))
+            }
+            kind if kind == PrefixExpression::syntax_kind() => {
+                Self::PrefixExpression(PrefixExpression(raw))
+            }
+            kind if kind == ParenthesisExpression::syntax_kind() => {
                 Self::ParenthesisExpression(ParenthesisExpression(raw))
             }
-            SyntaxKind::CallExpression => Self::CallExpression(CallExpression(raw)),
-            SyntaxKind::IfExpression => Self::IfExpression(IfExpression(raw)),
-            SyntaxKind::MatchExpression => Self::MatchExpression(MatchExpression(raw)),
-            _ => panic!(),
+            kind if kind == CallExpression::syntax_kind() => {
+                Self::CallExpression(CallExpression(raw))
+            }
+            kind if kind == IfExpression::syntax_kind() => Self::IfExpression(IfExpression(raw)),
+            kind if kind == MatchExpression::syntax_kind() => {
+                Self::MatchExpression(MatchExpression(raw))
+            }
+            _ => panic!("raw: {:?}", raw),
         }
     }
 }
@@ -95,8 +107,8 @@ impl std::convert::TryFrom<SyntaxNode> for Expression {
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
         match syntax_node.kind() {
-            x if Self::try_from_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
-            other => Err(Self::Error::new(Self::try_from_set()[0], other)),
+            x if Self::syntax_kind_set().contains(&x) => Ok(Self::from_raw_unchecked(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind_set()[0], other)),
         }
     }
 }

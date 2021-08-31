@@ -571,6 +571,81 @@ fn bollean_comparions() {
 }
 
 #[test]
+fn test_boollean_expressions() {
+    check_str(
+        "(input == i64) != true",
+        expect![[r#"
+        InfixExpression@0..15
+          PathExpression@0..1
+            Path@0..1
+              PathSegment@0..1
+                NameReference@0..1
+                  Identifier@0..1 "a"
+          Whitespace@1..2 " "
+          LessEquals@2..4 "<="
+          Whitespace@4..5 " "
+          InfixExpression@5..15
+            PrefixExpression@5..7
+              Minus@5..6 "-"
+              PathExpression@6..7
+                Path@6..7
+                  PathSegment@6..7
+                    NameReference@6..7
+                      Identifier@6..7 "a"
+            Whitespace@7..8 " "
+            Plus@8..9 "+"
+            Whitespace@9..10 " "
+            InfixExpression@10..15
+              Literal@10..11
+                Integer@10..11 "5"
+              Whitespace@11..12 " "
+              Asterisk@12..13 "*"
+              Whitespace@13..14 " "
+              Literal@14..15
+                Integer@14..15 "4""#]],
+    );
+
+    check_str(
+        "a + -b * c > a",
+        expect![[r#"
+        InfixExpression@0..14
+          InfixExpression@0..10
+            PathExpression@0..1
+              Path@0..1
+                PathSegment@0..1
+                  NameReference@0..1
+                    Identifier@0..1 "a"
+            Whitespace@1..2 " "
+            Plus@2..3 "+"
+            Whitespace@3..4 " "
+            InfixExpression@4..10
+              PrefixExpression@4..6
+                Minus@4..5 "-"
+                PathExpression@5..6
+                  Path@5..6
+                    PathSegment@5..6
+                      NameReference@5..6
+                        Identifier@5..6 "b"
+              Whitespace@6..7 " "
+              Asterisk@7..8 "*"
+              Whitespace@8..9 " "
+              PathExpression@9..10
+                Path@9..10
+                  PathSegment@9..10
+                    NameReference@9..10
+                      Identifier@9..10 "c"
+          Whitespace@10..11 " "
+          Greater@11..12 ">"
+          Whitespace@12..13 " "
+          PathExpression@13..14
+            Path@13..14
+              PathSegment@13..14
+                NameReference@13..14
+                  Identifier@13..14 "a""#]],
+    );
+}
+
+#[test]
 fn expression_precedence() {
     check_str(
         "a <= -a + 5 * 4",

@@ -1,4 +1,3 @@
-use core::panic;
 use hir::{
     Body, ExpressionId, FunctionLocationId, HirDatabase, InferenceResult, Name, Resolver,
     SourceDatabase, Type, TypeLocationId, Upcast, ValueConstructorId,
@@ -10,7 +9,7 @@ use inkwell::{
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetTriple},
     types::{AnyType, BasicType, BasicTypeEnum, StructType},
     values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue},
-    AddressSpace, OptimizationLevel,
+    AddressSpace, IntPredicate, OptimizationLevel,
 };
 use std::collections::HashMap;
 
@@ -87,7 +86,7 @@ fn inkwell_basic_type<'ink>(
                 hir::IntegerKind::I32 => context.i32_type().into(),
                 hir::IntegerKind::I64 => context.i64_type().into(),
             },
-            hir::ScalarType::Boolean => context.i32_type().into(),
+            hir::ScalarType::Boolean => context.bool_type().into(),
         },
     }
 }
@@ -110,7 +109,7 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
         .create_target_machine(
             &TargetTriple::create("x86_64-pc-linux-gnu"),
             "x86-64",
-            "+avx2",
+            "",
             opt,
             reloc,
             model,
@@ -320,7 +319,44 @@ impl<'ink> ExpressionLowerer<'ink> {
             hir::Expression::Block {
                 trailing_expression,
             } => self.fold_expression(stack_value, *trailing_expression),
-            hir::Expression::If { .. } => todo!(),
+            hir::Expression::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let comparison = self.fold_expression(None, *condition).into_int_value();
+
+                let then_block = self
+                    .context
+                    .append_basic_block(self.get_owener_function_value(), "then");
+                let else_block = self
+                    .context
+                    .append_basic_block(self.get_owener_function_value(), "else");
+                let merge_block = self
+                    .context
+                    .append_basic_block(self.get_owener_function_value(), "merge");
+
+                self.builder
+                    .build_conditional_branch(comparison, then_block, else_block);
+
+                self.builder.position_at_end(then_block);
+                let then_value = self.fold_expression(stack_value, *then_branch);
+                self.builder.build_unconditional_branch(merge_block);
+
+                self.builder.position_at_end(else_block);
+                let else_value = self.fold_expression(stack_value, *else_branch);
+                self.builder.build_unconditional_branch(merge_block);
+
+                self.builder.position_at_end(merge_block);
+                match stack_value {
+                    Some(ptr) => ptr.into(),
+                    None => {
+                        let phi = self.builder.build_phi(then_value.get_type(), "phi");
+                        phi.add_incoming(&[(&then_value, then_block), (&else_value, else_block)]);
+                        phi.as_basic_value()
+                    }
+                }
+            }
             hir::Expression::Match { matchee, case_list } => {
                 let matchee_value = self.fold_expression(None, *matchee);
 
@@ -472,8 +508,54 @@ impl<'ink> ExpressionLowerer<'ink> {
                     _ => panic!(),
                 }
             }
-            hir::Expression::Binary(_, _, _) => todo!(),
-            hir::Expression::Unary(_, _) => todo!(),
+            hir::Expression::Binary(operator, lhs, rhs) => {
+                let lhs = self.fold_expression(None, *lhs).into_int_value();
+                let rhs = self.fold_expression(None, *rhs).into_int_value();
+                let int_value = match operator {
+                    hir::BinaryOperator::Arithmetic(arithmetic_op) => match arithmetic_op {
+                        hir::ArithmeticOperator::Add => self.builder.build_int_add(lhs, rhs, ""),
+                        hir::ArithmeticOperator::Sub => self.builder.build_int_sub(lhs, rhs, ""),
+                        hir::ArithmeticOperator::Div => {
+                            self.builder.build_int_signed_div(lhs, rhs, "")
+                        }
+                        hir::ArithmeticOperator::Mul => self.builder.build_int_mul(lhs, rhs, ""),
+                        hir::ArithmeticOperator::Rem => {
+                            self.builder.build_int_signed_rem(lhs, rhs, "")
+                        }
+                    },
+                    hir::BinaryOperator::Compare(compare_op) => {
+                        let predicate = match compare_op {
+                            hir::CompareOperator::Equality { negated } => match negated {
+                                true => IntPredicate::NE,
+                                false => IntPredicate::EQ,
+                            },
+                            hir::CompareOperator::Order { ordering, strict } => {
+                                match (ordering, strict) {
+                                    (hir::Ordering::Less, true) => IntPredicate::SLT,
+                                    (hir::Ordering::Less, false) => IntPredicate::SLE,
+                                    (hir::Ordering::Greater, true) => IntPredicate::SGT,
+                                    (hir::Ordering::Greater, false) => IntPredicate::SGE,
+                                }
+                            }
+                        };
+                        self.builder.build_int_compare(predicate, lhs, rhs, "")
+                    }
+                };
+                int_value.into()
+            }
+            hir::Expression::Unary(op, expr) => {
+                let expr = self.fold_expression(None, *expr);
+                match op {
+                    hir::UnaryOperator::Minus => self
+                        .builder
+                        .build_int_sub(
+                            expr.get_type().into_int_type().const_zero(),
+                            expr.into_int_value(),
+                            "",
+                        )
+                        .into(),
+                }
+            }
             hir::Expression::Path(path) => {
                 let resolver = Resolver::new_for_expression(self.db, self.function_id, expr_id);
                 let item = resolver
@@ -533,6 +615,10 @@ impl<'ink> ExpressionLowerer<'ink> {
                             .into(),
                     },
                     None => todo!(),
+                },
+                hir::Literal::Bool(value) => match value {
+                    true => self.context.bool_type().const_all_ones().into(),
+                    false => self.context.bool_type().const_zero().into(),
                 },
             },
         }

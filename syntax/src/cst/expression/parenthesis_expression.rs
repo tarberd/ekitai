@@ -11,7 +11,7 @@ impl CstNode for ParenthesisExpression {
 }
 
 impl ParenthesisExpression {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::ParenthesisExpression
     }
 

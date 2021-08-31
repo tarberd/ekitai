@@ -5,7 +5,7 @@ use parser::SyntaxKind;
 pub struct PrefixExpression(pub(super) SyntaxNode);
 
 impl PrefixExpression {
-    fn syntax_kind() -> SyntaxKind {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
         SyntaxKind::PrefixExpression
     }
 
