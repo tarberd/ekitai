@@ -7,7 +7,7 @@ SourceFile@0..53
     ParameterList@8..32
       OpenParenthesis@8..9 "("
       Parameter@9..15
-        IdentifierPattern@9..10
+        BindingPattern@9..10
           Name@9..10
             Identifier@9..10 "a"
         Colon@10..11 ":"
@@ -20,7 +20,7 @@ SourceFile@0..53
       Comma@15..16 ","
       Whitespace@16..17 " "
       Parameter@17..23
-        IdentifierPattern@17..18
+        BindingPattern@17..18
           Name@17..18
             Identifier@17..18 "b"
         Colon@18..19 ":"
@@ -33,7 +33,7 @@ SourceFile@0..53
       Comma@23..24 ","
       Whitespace@24..25 " "
       Parameter@25..31
-        IdentifierPattern@25..26
+        BindingPattern@25..26
           Name@25..26
             Identifier@25..26 "c"
         Colon@26..27 ":"

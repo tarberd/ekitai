@@ -7,7 +7,7 @@ SourceFile@0..56
     ParameterList@6..25
       OpenParenthesis@6..7 "("
       Parameter@7..24
-        IdentifierPattern@7..12
+        BindingPattern@7..12
           Name@7..12
             Identifier@7..12 "my_id"
         Colon@12..13 ":"

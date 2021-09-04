@@ -20,7 +20,7 @@ pub use module_item::ModuleItem;
 pub use name::Name;
 pub use name_ref::NameReference;
 pub use path::{Path, PathSegment};
-pub use pattern::{IdentifierPattern, PathPattern, Pattern};
+pub use pattern::{BindingPattern, DeconstructorPattern, PatternList, Pattern};
 pub use source_file::SourceFile;
 pub use token::{
     Asterisk, BinaryOperator, Boolean, Identifier, Integer, Minus, Percent, Plus, Slash,

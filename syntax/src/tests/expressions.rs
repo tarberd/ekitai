@@ -575,73 +575,68 @@ fn test_boollean_expressions() {
     check_str(
         "(input == i64) != true",
         expect![[r#"
-        InfixExpression@0..15
-          PathExpression@0..1
-            Path@0..1
-              PathSegment@0..1
-                NameReference@0..1
-                  Identifier@0..1 "a"
-          Whitespace@1..2 " "
-          LessEquals@2..4 "<="
-          Whitespace@4..5 " "
-          InfixExpression@5..15
-            PrefixExpression@5..7
-              Minus@5..6 "-"
-              PathExpression@6..7
-                Path@6..7
-                  PathSegment@6..7
-                    NameReference@6..7
-                      Identifier@6..7 "a"
-            Whitespace@7..8 " "
-            Plus@8..9 "+"
-            Whitespace@9..10 " "
-            InfixExpression@10..15
-              Literal@10..11
-                Integer@10..11 "5"
-              Whitespace@11..12 " "
-              Asterisk@12..13 "*"
-              Whitespace@13..14 " "
-              Literal@14..15
-                Integer@14..15 "4""#]],
+            InfixExpression@0..22
+              ParenthesisExpression@0..14
+                OpenParenthesis@0..1 "("
+                InfixExpression@1..13
+                  PathExpression@1..6
+                    Path@1..6
+                      PathSegment@1..6
+                        NameReference@1..6
+                          Identifier@1..6 "input"
+                  Whitespace@6..7 " "
+                  DoubleEquals@7..9 "=="
+                  Whitespace@9..10 " "
+                  PathExpression@10..13
+                    Path@10..13
+                      PathSegment@10..13
+                        NameReference@10..13
+                          Identifier@10..13 "i64"
+                CloseParenthesis@13..14 ")"
+              Whitespace@14..15 " "
+              ExclamationEquals@15..17 "!="
+              Whitespace@17..18 " "
+              Literal@18..22
+                TrueKw@18..22 "true""#]],
     );
 
     check_str(
         "a + -b * c > a",
         expect![[r#"
-        InfixExpression@0..14
-          InfixExpression@0..10
-            PathExpression@0..1
-              Path@0..1
-                PathSegment@0..1
-                  NameReference@0..1
-                    Identifier@0..1 "a"
-            Whitespace@1..2 " "
-            Plus@2..3 "+"
-            Whitespace@3..4 " "
-            InfixExpression@4..10
-              PrefixExpression@4..6
-                Minus@4..5 "-"
-                PathExpression@5..6
-                  Path@5..6
-                    PathSegment@5..6
-                      NameReference@5..6
-                        Identifier@5..6 "b"
-              Whitespace@6..7 " "
-              Asterisk@7..8 "*"
-              Whitespace@8..9 " "
-              PathExpression@9..10
-                Path@9..10
-                  PathSegment@9..10
-                    NameReference@9..10
-                      Identifier@9..10 "c"
-          Whitespace@10..11 " "
-          Greater@11..12 ">"
-          Whitespace@12..13 " "
-          PathExpression@13..14
-            Path@13..14
-              PathSegment@13..14
-                NameReference@13..14
-                  Identifier@13..14 "a""#]],
+            InfixExpression@0..14
+              InfixExpression@0..10
+                PathExpression@0..1
+                  Path@0..1
+                    PathSegment@0..1
+                      NameReference@0..1
+                        Identifier@0..1 "a"
+                Whitespace@1..2 " "
+                Plus@2..3 "+"
+                Whitespace@3..4 " "
+                PrefixExpression@4..10
+                  Minus@4..5 "-"
+                  InfixExpression@5..10
+                    PathExpression@5..6
+                      Path@5..6
+                        PathSegment@5..6
+                          NameReference@5..6
+                            Identifier@5..6 "b"
+                    Whitespace@6..7 " "
+                    Asterisk@7..8 "*"
+                    Whitespace@8..9 " "
+                    PathExpression@9..10
+                      Path@9..10
+                        PathSegment@9..10
+                          NameReference@9..10
+                            Identifier@9..10 "c"
+              Whitespace@10..11 " "
+              Greater@11..12 ">"
+              Whitespace@12..13 " "
+              PathExpression@13..14
+                Path@13..14
+                  PathSegment@13..14
+                    NameReference@13..14
+                      Identifier@13..14 "a""#]],
     );
 }
 
@@ -650,73 +645,73 @@ fn expression_precedence() {
     check_str(
         "a <= -a + 5 * 4",
         expect![[r#"
-        InfixExpression@0..15
-          PathExpression@0..1
-            Path@0..1
-              PathSegment@0..1
-                NameReference@0..1
-                  Identifier@0..1 "a"
-          Whitespace@1..2 " "
-          LessEquals@2..4 "<="
-          Whitespace@4..5 " "
-          InfixExpression@5..15
-            PrefixExpression@5..7
-              Minus@5..6 "-"
-              PathExpression@6..7
-                Path@6..7
-                  PathSegment@6..7
-                    NameReference@6..7
-                      Identifier@6..7 "a"
-            Whitespace@7..8 " "
-            Plus@8..9 "+"
-            Whitespace@9..10 " "
-            InfixExpression@10..15
-              Literal@10..11
-                Integer@10..11 "5"
-              Whitespace@11..12 " "
-              Asterisk@12..13 "*"
-              Whitespace@13..14 " "
-              Literal@14..15
-                Integer@14..15 "4""#]],
+            InfixExpression@0..15
+              PathExpression@0..1
+                Path@0..1
+                  PathSegment@0..1
+                    NameReference@0..1
+                      Identifier@0..1 "a"
+              Whitespace@1..2 " "
+              LessEquals@2..4 "<="
+              Whitespace@4..5 " "
+              PrefixExpression@5..15
+                Minus@5..6 "-"
+                InfixExpression@6..15
+                  PathExpression@6..7
+                    Path@6..7
+                      PathSegment@6..7
+                        NameReference@6..7
+                          Identifier@6..7 "a"
+                  Whitespace@7..8 " "
+                  Plus@8..9 "+"
+                  Whitespace@9..10 " "
+                  InfixExpression@10..15
+                    Literal@10..11
+                      Integer@10..11 "5"
+                    Whitespace@11..12 " "
+                    Asterisk@12..13 "*"
+                    Whitespace@13..14 " "
+                    Literal@14..15
+                      Integer@14..15 "4""#]],
     );
 
     check_str(
         "a + -b * c > a",
         expect![[r#"
-        InfixExpression@0..14
-          InfixExpression@0..10
-            PathExpression@0..1
-              Path@0..1
-                PathSegment@0..1
-                  NameReference@0..1
-                    Identifier@0..1 "a"
-            Whitespace@1..2 " "
-            Plus@2..3 "+"
-            Whitespace@3..4 " "
-            InfixExpression@4..10
-              PrefixExpression@4..6
-                Minus@4..5 "-"
-                PathExpression@5..6
-                  Path@5..6
-                    PathSegment@5..6
-                      NameReference@5..6
-                        Identifier@5..6 "b"
-              Whitespace@6..7 " "
-              Asterisk@7..8 "*"
-              Whitespace@8..9 " "
-              PathExpression@9..10
-                Path@9..10
-                  PathSegment@9..10
-                    NameReference@9..10
-                      Identifier@9..10 "c"
-          Whitespace@10..11 " "
-          Greater@11..12 ">"
-          Whitespace@12..13 " "
-          PathExpression@13..14
-            Path@13..14
-              PathSegment@13..14
-                NameReference@13..14
-                  Identifier@13..14 "a""#]],
+            InfixExpression@0..14
+              InfixExpression@0..10
+                PathExpression@0..1
+                  Path@0..1
+                    PathSegment@0..1
+                      NameReference@0..1
+                        Identifier@0..1 "a"
+                Whitespace@1..2 " "
+                Plus@2..3 "+"
+                Whitespace@3..4 " "
+                PrefixExpression@4..10
+                  Minus@4..5 "-"
+                  InfixExpression@5..10
+                    PathExpression@5..6
+                      Path@5..6
+                        PathSegment@5..6
+                          NameReference@5..6
+                            Identifier@5..6 "b"
+                    Whitespace@6..7 " "
+                    Asterisk@7..8 "*"
+                    Whitespace@8..9 " "
+                    PathExpression@9..10
+                      Path@9..10
+                        PathSegment@9..10
+                          NameReference@9..10
+                            Identifier@9..10 "c"
+              Whitespace@10..11 " "
+              Greater@11..12 ">"
+              Whitespace@12..13 " "
+              PathExpression@13..14
+                Path@13..14
+                  PathSegment@13..14
+                    NameReference@13..14
+                      Identifier@13..14 "a""#]],
     );
 }
 
@@ -761,11 +756,11 @@ fn if_expression() {
 }
 
 #[test]
-fn match_expression() {
+fn match_nullexpression() {
     check_str(
-        "match something { SomeConstructor => 0i32 }",
+        "match something { SomeType::SomeConstructor() => 0i32 }",
         expect![[r#"
-            MatchExpression@0..43
+            MatchExpression@0..55
               MatchKw@0..5 "match"
               Whitespace@5..6 " "
               PathExpression@6..15
@@ -774,29 +769,39 @@ fn match_expression() {
                     NameReference@6..15
                       Identifier@6..15 "something"
               Whitespace@15..16 " "
-              MatchCaseList@16..43
+              MatchCaseList@16..55
                 OpenBraces@16..17 "{"
                 Whitespace@17..18 " "
-                MatchCase@18..41
-                  IdentifierPattern@18..33
-                    Name@18..33
-                      Identifier@18..33 "SomeConstructor"
-                  Whitespace@33..34 " "
-                  FatArrow@34..36 "=>"
-                  Whitespace@36..37 " "
-                  Literal@37..41
-                    Integer@37..41 "0i32"
-                Whitespace@41..42 " "
-                CloseBraces@42..43 "}""#]],
+                MatchCase@18..53
+                  DeconstructorPattern@18..45
+                    Path@18..43
+                      Path@18..26
+                        PathSegment@18..26
+                          NameReference@18..26
+                            Identifier@18..26 "SomeType"
+                      DoubleColon@26..28 "::"
+                      PathSegment@28..43
+                        NameReference@28..43
+                          Identifier@28..43 "SomeConstructor"
+                    BindingPatternList@43..45
+                      OpenParenthesis@43..44 "("
+                      CloseParenthesis@44..45 ")"
+                  Whitespace@45..46 " "
+                  FatArrow@46..48 "=>"
+                  Whitespace@48..49 " "
+                  Literal@49..53
+                    Integer@49..53 "0i32"
+                Whitespace@53..54 " "
+                CloseBraces@54..55 "}""#]],
     );
 }
 
 #[test]
 fn match_expression_multiple_case() {
     check_str(
-        "match something { SomeConstructor => 0i32, OtherConstructor => 0i32}",
+        "match something { some_binding => 0i32, SomeType::SomeConstructor(first_binding, seccond_binding) => 0i32}",
         expect![[r#"
-            MatchExpression@0..68
+            MatchExpression@0..106
               MatchKw@0..5 "match"
               Whitespace@5..6 " "
               PathExpression@6..15
@@ -805,29 +810,47 @@ fn match_expression_multiple_case() {
                     NameReference@6..15
                       Identifier@6..15 "something"
               Whitespace@15..16 " "
-              MatchCaseList@16..68
+              MatchCaseList@16..106
                 OpenBraces@16..17 "{"
                 Whitespace@17..18 " "
-                MatchCase@18..41
-                  IdentifierPattern@18..33
-                    Name@18..33
-                      Identifier@18..33 "SomeConstructor"
+                MatchCase@18..38
+                  BindingPattern@18..30
+                    Name@18..30
+                      Identifier@18..30 "some_binding"
+                  Whitespace@30..31 " "
+                  FatArrow@31..33 "=>"
                   Whitespace@33..34 " "
-                  FatArrow@34..36 "=>"
-                  Whitespace@36..37 " "
-                  Literal@37..41
-                    Integer@37..41 "0i32"
-                Comma@41..42 ","
-                Whitespace@42..43 " "
-                MatchCase@43..67
-                  IdentifierPattern@43..59
-                    Name@43..59
-                      Identifier@43..59 "OtherConstructor"
-                  Whitespace@59..60 " "
-                  FatArrow@60..62 "=>"
-                  Whitespace@62..63 " "
-                  Literal@63..67
-                    Integer@63..67 "0i32"
-                CloseBraces@67..68 "}""#]],
+                  Literal@34..38
+                    Integer@34..38 "0i32"
+                Comma@38..39 ","
+                Whitespace@39..40 " "
+                MatchCase@40..105
+                  DeconstructorPattern@40..97
+                    Path@40..65
+                      Path@40..48
+                        PathSegment@40..48
+                          NameReference@40..48
+                            Identifier@40..48 "SomeType"
+                      DoubleColon@48..50 "::"
+                      PathSegment@50..65
+                        NameReference@50..65
+                          Identifier@50..65 "SomeConstructor"
+                    BindingPatternList@65..97
+                      OpenParenthesis@65..66 "("
+                      BindingPattern@66..79
+                        Name@66..79
+                          Identifier@66..79 "first_binding"
+                      Comma@79..80 ","
+                      Whitespace@80..81 " "
+                      BindingPattern@81..96
+                        Name@81..96
+                          Identifier@81..96 "seccond_binding"
+                      CloseParenthesis@96..97 ")"
+                  Whitespace@97..98 " "
+                  FatArrow@98..100 "=>"
+                  Whitespace@100..101 " "
+                  Literal@101..105
+                    Integer@101..105 "0i32"
+                CloseBraces@105..106 "}""#]],
     );
 }

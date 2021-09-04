@@ -7,7 +7,7 @@ SourceFile@0..72
     ParameterList@6..17
       OpenParenthesis@6..7 "("
       Parameter@7..15
-        IdentifierPattern@7..10
+        BindingPattern@7..10
           Name@7..10
             Identifier@7..10 "one"
         Colon@10..11 ":"
@@ -44,7 +44,7 @@ SourceFile@0..72
     ParameterList@36..59
       OpenParenthesis@36..37 "("
       Parameter@37..45
-        IdentifierPattern@37..40
+        BindingPattern@37..40
           Name@37..40
             Identifier@37..40 "two"
         Colon@40..41 ":"
@@ -57,7 +57,7 @@ SourceFile@0..72
       Comma@45..46 ","
       Whitespace@46..47 " "
       Parameter@47..57
-        IdentifierPattern@47..52
+        BindingPattern@47..52
           Name@47..52
             Identifier@47..52 "three"
         Colon@52..53 ":"

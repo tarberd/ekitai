@@ -580,49 +580,80 @@ impl FunctionDefinition {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Body {
     pub patterns: Arena<Pattern>,
-    pub parameter_bindings: Vec<PatternId>,
+    pub parameters: Vec<PatternId>,
     pub expressions: Arena<Expression>,
     pub root_expression: ExpressionId,
 }
 
 impl Body {
     pub fn lower(function: cst::FunctionDefinition) -> Self {
-        let patterns = function
-            .parameter_list()
-            .unwrap()
-            .parameters()
-            .map(|param| Pattern::lower(param.pattern().unwrap()))
-            .collect::<Arena<_>>();
-
-        let parameter_bindings = patterns.iter().map(|(id, _)| id).collect();
-
         let (
-            BodyExpressionFold {
-                patterns,
+            BodyFold {
                 expressions,
+                patterns,
+                parameters,
             },
             root_expression,
-        ) = BodyExpressionFold {
-            patterns,
-            expressions: Arena::default(),
-        }
-        .fold_block_expression(function.body().unwrap());
+        ) = BodyFold::new()
+            .fold_function_parameters(&function)
+            .fold_block_expression(function.body().unwrap());
 
         Self {
             patterns,
-            parameter_bindings,
+            parameters,
             expressions,
             root_expression,
         }
     }
 }
 
-struct BodyExpressionFold {
+#[derive(Default)]
+struct BodyFold {
     pub expressions: Arena<Expression>,
     pub patterns: Arena<Pattern>,
+    pub parameters: Vec<PatternId>,
 }
 
-impl BodyExpressionFold {
+impl BodyFold {
+    fn new() -> Self {
+        BodyFold::default()
+    }
+
+    fn fold_function_parameters(self, function: &cst::FunctionDefinition) -> Self {
+        function
+            .parameter_list()
+            .unwrap()
+            .parameters()
+            .fold(self, |fold, param| {
+                let (mut fold, pattern_id) = fold.fold_pattern(param.pattern().unwrap());
+                fold.parameters.push(pattern_id);
+                fold
+            })
+    }
+
+    fn fold_pattern(self, pattern: cst::Pattern) -> (Self, PatternId) {
+        let (mut fold, pattern) = match pattern {
+            cst::Pattern::DeconstructorPattern(deconstructor) => {
+                let subpatterns = deconstructor.pattern_list().unwrap().patterns();
+                let (fold, subpatterns) =
+                    subpatterns.fold((self, Vec::new()), |(fold, mut subpatterns), pattern| {
+                        let (fold, subpattern) = fold.fold_pattern(pattern);
+                        subpatterns.push(subpattern);
+                        (fold, subpatterns)
+                    });
+                (
+                    fold,
+                    Pattern::Deconstructor(Path::lower(deconstructor.path().unwrap()), subpatterns),
+                )
+            }
+            cst::Pattern::BindingPattern(pat) => {
+                (self, Pattern::Bind(Name::lower(pat.name().unwrap())))
+            }
+        };
+        let pattern_id = fold.patterns.alloc(pattern);
+        (fold, pattern_id)
+    }
+
     fn fold_expression(self, expression: cst::Expression) -> (Self, ExpressionId) {
         match expression {
             cst::Expression::Literal(literal) => self.fold_literal_expression(literal),
@@ -740,8 +771,8 @@ impl BodyExpressionFold {
         let (mut fold, case_list) = match_expr.case_list().unwrap().cases().fold(
             (fold, Vec::new()),
             |(fold, mut case_list), case| {
-                let (mut fold, case_expr) = fold.fold_expression(case.expression().unwrap());
-                let pattern = fold.patterns.alloc(Pattern::lower(case.pattern().unwrap()));
+                let (fold, case_expr) = fold.fold_expression(case.expression().unwrap());
+                let (fold, pattern) = fold.fold_pattern(case.pattern().unwrap());
                 case_list.push((pattern, case_expr));
                 (fold, case_list)
             },
@@ -828,15 +859,17 @@ pub type PatternId = Idx<Pattern>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern {
-    Path(Path),
+    Deconstructor(Path, Vec<PatternId>),
     Bind(Name),
 }
 
 impl Pattern {
     pub fn lower(pattern: cst::Pattern) -> Self {
         match pattern {
-            cst::Pattern::PathPattern(pat) => Self::Path(Path::lower(pat.path().unwrap())),
-            cst::Pattern::IdentifierPattern(pat) => Self::Bind(Name::lower(pat.name().unwrap())),
+            cst::Pattern::DeconstructorPattern(pat) => {
+                Self::Deconstructor(Path::lower(pat.path().unwrap()), Vec::new())
+            }
+            cst::Pattern::BindingPattern(pat) => Self::Bind(Name::lower(pat.name().unwrap())),
         }
     }
 }
@@ -1179,12 +1212,12 @@ impl ExpressionScopeMap {
 
     fn build_root_scope(body: &Body) -> ExpressionScope {
         let entries = body
-            .parameter_bindings
+            .parameters
             .iter()
             .flat_map(|pattern_id| {
                 let pattern = &body.patterns[*pattern_id];
                 match pattern {
-                    Pattern::Path(_) => None,
+                    Pattern::Deconstructor(_, _) => todo!(),
                     Pattern::Bind(bind) => Some((bind.clone(), *pattern_id)),
                 }
             })
@@ -1223,7 +1256,7 @@ impl<'body> ExpressionScopeFold<'body> {
                 self.fold_expression(*matchee, scope_id),
                 |mut fold, (pattern_id, expr_id)| {
                     let entries = match &fold.body.patterns[*pattern_id] {
-                        Pattern::Path(_) => vec![],
+                        Pattern::Deconstructor(_, _) => todo!(),
                         Pattern::Bind(name) => vec![(name.clone(), *pattern_id)],
                     };
 
@@ -1271,7 +1304,7 @@ struct InferenceResultFold<'s> {
 }
 
 impl<'s> InferenceResultFold<'s> {
-    fn new_empty(db: &'s dyn HirDatabase, function_id: FunctionLocationId, body: &'s Body) -> Self {
+    fn new(db: &'s dyn HirDatabase, function_id: FunctionLocationId, body: &'s Body) -> Self {
         Self {
             db,
             function_id,
@@ -1288,7 +1321,7 @@ impl<'s> InferenceResultFold<'s> {
         function_id: FunctionLocationId,
         body: &'s Body,
     ) -> Self {
-        Self::new_empty(db, function_id, body)
+        Self::new(db, function_id, body)
             .fold_function_parameters()
             .fold_body_root_expression()
     }
@@ -1305,7 +1338,7 @@ impl<'s> InferenceResultFold<'s> {
 
         self = self
             .body
-            .parameter_bindings
+            .parameters
             .iter()
             .zip(parameter_types)
             .fold(self, |fold, (pattern_id, ty)| {
@@ -1322,7 +1355,7 @@ impl<'s> InferenceResultFold<'s> {
         expected_type: Type,
     ) -> Self {
         let ty = match &self.body.patterns[pattern_id] {
-            Pattern::Path(path) => {
+            Pattern::Deconstructor(path, _) => {
                 let path_resolver =
                     ValuePathResolver::new(self.db, &self.inference_result, resolver);
                 path_resolver.resolve_type_for_value_path(path)

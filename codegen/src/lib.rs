@@ -215,13 +215,13 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
 
         let body = db.body_of_definition(*function_id);
         let local_bindings: HashMap<_, _> = body
-            .parameter_bindings
+            .parameters
             .iter()
             .zip(function.parameters())
             .map(|(pattern_id, (parameter, parameter_kind))| {
                 let pattern = &body.patterns[*pattern_id];
                 match pattern {
-                    hir::Pattern::Path(_) => todo!("Unsing unsuported path pattern"),
+                    hir::Pattern::Deconstructor(_, _) => todo!("Unsing unsuported path pattern"),
                     hir::Pattern::Bind(name) => {
                         parameter.set_name(&name.id);
                         (name.clone(), (parameter, *parameter_kind))
@@ -379,7 +379,8 @@ impl<'ink> ExpressionLowerer<'ink> {
                         let (cases, case_expressions): (Vec<_>, Vec<ExpressionId>) = case_list.iter().map(|(pattern_id, case_expression)| {
                             let case_pattern = &self.body.patterns[*pattern_id];
                             match case_pattern {
-                                hir::Pattern::Path(path) => {
+                                hir::Pattern::Deconstructor(path, _) => {
+
                                     let item = resolver
                                         .resolve_path_in_value_namespace(self.db.upcast(), path)
                                         .unwrap();
@@ -588,7 +589,7 @@ impl<'ink> ExpressionLowerer<'ink> {
                     }
                     hir::ValueNamespaceItem::LocalBinding(binding) => {
                         match &self.body.patterns[binding] {
-                            hir::Pattern::Path(_) => todo!(),
+                            hir::Pattern::Deconstructor(_, _) => todo!(),
                             hir::Pattern::Bind(name) => match stack_value {
                                 Some(ptr) => {
                                     let source = self.local_bindings[name].0.into_pointer_value();
