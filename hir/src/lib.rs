@@ -214,19 +214,19 @@ fn type_definition_data(db: &dyn DefinitionsDatabase, id: TypeLocationId) -> Typ
 
 #[salsa::query_group(HirDatabaseStorage)]
 pub trait HirDatabase: DefinitionsDatabase + Upcast<dyn DefinitionsDatabase> {
-    fn type_of_definition(&self, definition: TypableDefinition) -> Type;
+    fn type_of_definition(&self, definition: TypeableDefinition) -> Type;
 
-    fn type_of_value(&self, id: TypableValueDefinitionId) -> Type;
+    fn type_of_value(&self, id: TypeableValueDefinitionId) -> Type;
 
-    fn function_definition_signature(&self, function: FunctionLocationId) -> FunctionSignature;
+    fn callable_definition_signature(&self, callable: CallableDefinitionId) -> FunctionSignature;
 
     fn infer_body_expression_types(&self, function: FunctionLocationId) -> InferenceResult;
 }
 
-fn type_of_definition(_db: &dyn HirDatabase, definition: TypableDefinition) -> Type {
+fn type_of_definition(_db: &dyn HirDatabase, definition: TypeableDefinition) -> Type {
     match definition {
-        TypableDefinition::Type(type_def_location) => Type::AbstractDataType(type_def_location),
-        TypableDefinition::Builtin(builtin) => match builtin {
+        TypeableDefinition::Type(type_def_location) => Type::AbstractDataType(type_def_location),
+        TypeableDefinition::Builtin(builtin) => match builtin {
             BuiltinType::Integer(int) => match int {
                 BuiltinInteger::I32 => Type::Scalar(ScalarType::Integer(IntegerKind::I32)),
                 BuiltinInteger::I64 => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
@@ -236,13 +236,27 @@ fn type_of_definition(_db: &dyn HirDatabase, definition: TypableDefinition) -> T
     }
 }
 
-fn type_of_value(_db: &dyn HirDatabase, value: TypableValueDefinitionId) -> Type {
+fn type_of_value(_db: &dyn HirDatabase, value: TypeableValueDefinitionId) -> Type {
     match value {
-        TypableValueDefinitionId::Function(function_location_id) => {
-            Type::FunctionDefinition(function_location_id)
+        TypeableValueDefinitionId::Function(function_location_id) => Type::FunctionDefinition(
+            CallableDefinitionId::FunctionDefinition(function_location_id),
+        ),
+        TypeableValueDefinitionId::ValueConstructor(value_constructor_id) => {
+            Type::FunctionDefinition(CallableDefinitionId::ValueConstructor(value_constructor_id))
         }
-        TypableValueDefinitionId::ValueConstructor(ValueConstructorId { parrent_id, .. }) => {
-            Type::AbstractDataType(parrent_id)
+    }
+}
+
+fn callable_definition_signature(
+    db: &dyn HirDatabase,
+    callable: CallableDefinitionId,
+) -> FunctionSignature {
+    match callable {
+        CallableDefinitionId::FunctionDefinition(function_id) => {
+            function_definition_signature(db, function_id)
+        }
+        CallableDefinitionId::ValueConstructor(value_constructor_id) => {
+            value_constructor_signature(db, value_constructor_id)
         }
     }
 }
@@ -269,6 +283,33 @@ fn function_definition_signature(
     let return_type = typeref_resolver
         .resolve_type_reference(&function.return_type)
         .expect("missing function definition return type");
+
+    FunctionSignature {
+        parameter_types,
+        return_type,
+    }
+}
+
+fn value_constructor_signature(
+    db: &dyn HirDatabase,
+    value_constructor_id: ValueConstructorId,
+) -> FunctionSignature {
+    let resolver = Resolver::new_for_type(db, value_constructor_id.parrent_id);
+    let typeref_resolver = TypeReferenceResolver::new(db, &resolver);
+    let type_data = db.type_definition_data(value_constructor_id.parrent_id);
+    let constructor = type_data.value_constructor(value_constructor_id.id);
+
+    let parameter_types = constructor
+        .parameters
+        .iter()
+        .map(|type_reference| {
+            typeref_resolver
+                .resolve_type_reference(type_reference)
+                .expect("missing value constructor definition data type")
+        })
+        .collect();
+
+    let return_type = Type::AbstractDataType(value_constructor_id.parrent_id);
 
     FunctionSignature {
         parameter_types,
@@ -343,7 +384,7 @@ impl DefinitionsMap {
                     .try_fold(resolution, |resolution, name| {
                         resolution
                             .in_type_namespace()
-                            .map(|typable_item| match typable_item {
+                            .map(|typeable_item| match typeable_item {
                                 TypeNamespaceItem::TypeDefinition(type_id) => {
                                     let ty_data = db.type_definition_data(type_id);
                                     let value = ty_data
@@ -443,14 +484,14 @@ pub enum LocationId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypableDefinition {
+pub enum TypeableDefinition {
     Type(TypeLocationId),
     Builtin(BuiltinType),
 }
 
-impl From<TypeNamespaceItem> for TypableDefinition {
-    fn from(typable_item: TypeNamespaceItem) -> Self {
-        match typable_item {
+impl From<TypeNamespaceItem> for TypeableDefinition {
+    fn from(typeable_item: TypeNamespaceItem) -> Self {
+        match typeable_item {
             TypeNamespaceItem::TypeDefinition(ty_def) => Self::Type(ty_def),
             TypeNamespaceItem::Builtin(builtin) => Self::Builtin(builtin),
         }
@@ -458,7 +499,7 @@ impl From<TypeNamespaceItem> for TypableDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum TypableValueDefinitionId {
+pub enum TypeableValueDefinitionId {
     Function(FunctionLocationId),
     ValueConstructor(ValueConstructorId),
 }
@@ -466,8 +507,26 @@ pub enum TypableValueDefinitionId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     AbstractDataType(TypeLocationId),
-    FunctionDefinition(FunctionLocationId),
+    FunctionDefinition(CallableDefinitionId),
     Scalar(ScalarType),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CallableDefinitionId {
+    FunctionDefinition(FunctionLocationId),
+    ValueConstructor(ValueConstructorId),
+}
+
+impl From<FunctionLocationId> for CallableDefinitionId {
+    fn from(id: FunctionLocationId) -> Self {
+        Self::FunctionDefinition(id)
+    }
+}
+
+impl From<ValueConstructorId> for CallableDefinitionId {
+    fn from(id: ValueConstructorId) -> Self {
+        Self::ValueConstructor(id)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -497,6 +556,12 @@ pub struct TypeDefinitionData {
     pub value_constructors: Arena<ValueConstructor>,
 }
 
+impl TypeDefinitionData {
+    pub(crate) fn value_constructor(&self, id: Idx<ValueConstructor>) -> &ValueConstructor {
+        &self.value_constructors[id]
+    }
+}
+
 impl TypeDefinition {
     fn lower(cst_map: &CstIdMap, ty: cst::TypeDefinition) -> Self {
         TypeDefinition {
@@ -521,12 +586,19 @@ pub struct ValueConstructorId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValueConstructor {
     pub name: Name,
+    pub parameters: Vec<TypeReference>,
 }
 
 impl ValueConstructor {
     fn lower(ctor: cst::ValueConstructor) -> Self {
         ValueConstructor {
             name: Name::lower(ctor.name().unwrap()),
+            parameters: ctor
+                .constructor_parameter_list()
+                .unwrap()
+                .types()
+                .map(TypeReference::lower)
+                .collect(),
         }
     }
 }
@@ -1037,6 +1109,10 @@ impl Resolver {
         Self::new_root_resolver(db)
     }
 
+    pub fn new_for_type(db: &dyn HirDatabase, _id: TypeLocationId) -> Self {
+        Self::new_root_resolver(db)
+    }
+
     pub fn new_for_expression(
         db: &dyn HirDatabase,
         function_id: FunctionLocationId,
@@ -1239,7 +1315,6 @@ struct ExpressionScopeFold<'body> {
 impl<'body> ExpressionScopeFold<'body> {
     fn fold_expression(mut self, expr_id: ExpressionId, scope_id: ExpressionScopeId) -> Self {
         self.scope_map.insert(expr_id, scope_id);
-
         match &self.body.expressions[expr_id] {
             Expression::Block {
                 trailing_expression,
@@ -1255,16 +1330,11 @@ impl<'body> ExpressionScopeFold<'body> {
             Expression::Match { matchee, case_list } => case_list.iter().fold(
                 self.fold_expression(*matchee, scope_id),
                 |mut fold, (pattern_id, expr_id)| {
-                    let entries = match &fold.body.patterns[*pattern_id] {
-                        Pattern::Deconstructor(_, _) => todo!(),
-                        Pattern::Bind(name) => vec![(name.clone(), *pattern_id)],
-                    };
-
+                    let entries = fold.fold_pattern_bindings(*pattern_id);
                     let scope_id = fold.scopes.alloc(ExpressionScope {
                         parent: Some(scope_id),
                         entries,
                     });
-
                     fold.fold_expression(*expr_id, scope_id)
                 },
             ),
@@ -1279,6 +1349,28 @@ impl<'body> ExpressionScopeFold<'body> {
             Expression::Unary(_, expr) => self.fold_expression(*expr, scope_id),
             Expression::Path(_) => self,
             Expression::Literal(_) => self,
+        }
+    }
+
+    fn fold_pattern_bindings(&self, pattern_id: PatternId) -> Vec<(Name, PatternId)> {
+        self.fold_pattern_bindings_0(pattern_id, Vec::new())
+    }
+
+    fn fold_pattern_bindings_0(
+        &self,
+        pattern_id: PatternId,
+        mut entries: Vec<(Name, PatternId)>,
+    ) -> Vec<(Name, PatternId)> {
+        match &self.body.patterns[pattern_id] {
+            Pattern::Deconstructor(_, subpatterns) => {
+                subpatterns.iter().fold(entries, |entries, pattern| {
+                    self.fold_pattern_bindings_0(*pattern, entries)
+                })
+            }
+            Pattern::Bind(name) => {
+                entries.push((name.clone(), pattern_id));
+                entries
+            }
         }
     }
 }
@@ -1371,7 +1463,7 @@ impl<'s> InferenceResultFold<'s> {
         let (fold, ty) = self.fold_expression_type(root_expression);
         let ret_ty = fold
             .db
-            .function_definition_signature(fold.function_id)
+            .callable_definition_signature(fold.function_id.into())
             .return_type;
         if ty != ret_ty {
             panic!("expected {:?} found {:?}", ret_ty, ty);
@@ -1480,7 +1572,7 @@ impl<'s> InferenceResultFold<'s> {
                 let (fold, callee_type) = self.fold_expression_type(*callee);
                 match callee_type {
                     Type::FunctionDefinition(f_id) => {
-                        let sig = fold.db.function_definition_signature(f_id);
+                        let sig = fold.db.callable_definition_signature(f_id);
                         let (fold, arg_tys) = arguments.iter().fold(
                             (fold, Vec::new()),
                             |(fold, mut arguments), arg| {
@@ -1562,15 +1654,15 @@ impl<'d> ValuePathResolver<'d> {
                 .expect("pattern has no type")
                 .clone(),
             non_local_item => {
-                let typable_value = match non_local_item {
-                    ValueNamespaceItem::Function(id) => TypableValueDefinitionId::Function(id),
+                let typeable_value = match non_local_item {
+                    ValueNamespaceItem::Function(id) => TypeableValueDefinitionId::Function(id),
                     ValueNamespaceItem::ValueConstructor(id) => {
-                        TypableValueDefinitionId::ValueConstructor(id)
+                        TypeableValueDefinitionId::ValueConstructor(id)
                     }
                     _ => panic!(),
                 };
 
-                self.db.type_of_value(typable_value)
+                self.db.type_of_value(typeable_value)
             }
         };
 

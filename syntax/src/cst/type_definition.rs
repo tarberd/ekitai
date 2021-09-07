@@ -1,4 +1,4 @@
-use super::{raw::SyntaxNode, CstNode, Name, SyntaxToAstError};
+use super::{CstNode, Name, SyntaxToAstError, Type, raw::SyntaxNode};
 use parser::SyntaxKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,7 +38,6 @@ impl std::fmt::Display for TypeDefinition {
 
 impl std::convert::TryFrom<SyntaxNode> for TypeDefinition {
     type Error = SyntaxToAstError;
-
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
         match syntax_node.kind() {
             x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
@@ -66,6 +65,13 @@ impl ValueConstructor {
         self.as_syntax_node()
             .children()
             .find_map(|n| Name::try_from(n).ok())
+    }
+
+    pub fn constructor_parameter_list(&self) -> Option<ConstructorParameterList> {
+        use std::convert::TryFrom;
+        self.as_syntax_node()
+            .children()
+            .find_map(|n| ConstructorParameterList::try_from(n).ok())
     }
 }
 
@@ -118,6 +124,48 @@ impl std::fmt::Display for ValueConstructorList {
 }
 
 impl std::convert::TryFrom<SyntaxNode> for ValueConstructorList {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ConstructorParameterList(SyntaxNode);
+
+impl CstNode for ConstructorParameterList {
+    fn as_syntax_node(&self) -> &SyntaxNode {
+        &self.0
+    }
+}
+
+impl ConstructorParameterList {
+    fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::ConstructorParameterList
+    }
+
+    pub fn types(&self) -> impl Iterator<Item = Type> {
+        use std::convert::TryFrom;
+        let mut children = self.as_syntax_node().children();
+        std::iter::from_fn(move || {
+            children
+                .by_ref()
+                .find_map(|n| Type::try_from(n).ok())
+        })
+    }
+}
+
+impl std::fmt::Display for ConstructorParameterList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_node(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxNode> for ConstructorParameterList {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

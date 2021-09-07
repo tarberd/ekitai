@@ -1,6 +1,6 @@
 use hir::{
-    Body, ExpressionId, FunctionLocationId, HirDatabase, InferenceResult, Name, Resolver,
-    SourceDatabase, Type, TypeLocationId, Upcast, ValueConstructorId,
+    Body, CallableDefinitionId, ExpressionId, FunctionLocationId, HirDatabase, InferenceResult,
+    Name, Resolver, ScalarType, SourceDatabase, Type, TypeLocationId, Upcast, ValueConstructorId,
 };
 use inkwell::{
     attributes::{Attribute, AttributeLoc},
@@ -132,8 +132,11 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
             hir::LocationId::FunctionLocationId(_) => continue,
             hir::LocationId::TypeLocationId(ty_id) => {
                 let ty = db.type_definition_data(*ty_id);
+
+                let tag_type = context.i32_type();
+
                 let sty = context.opaque_struct_type(ty.name.id.as_str());
-                sty.set_body(&[context.i32_type().into()], false);
+                sty.set_body(&[tag_type.into()], false);
                 type_map.insert(*ty_id, sty);
             }
         };
@@ -145,7 +148,7 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
         match id {
             hir::LocationId::FunctionLocationId(f_id) => {
                 let fun = db.function_definition_data(*f_id);
-                let sig = db.function_definition_signature(*f_id);
+                let sig = db.callable_definition_signature((*f_id).into());
 
                 let param_tys = sig.parameter_types.iter().map(|ty| {
                     match inkwell_basic_type(&context, &type_map, ty) {
@@ -453,10 +456,13 @@ impl<'ink> ExpressionLowerer<'ink> {
             }
             hir::Expression::Call { callee, arguments } => {
                 let callee_type = &self.inference.type_of_expression[*callee];
-                match callee_type {
-                    Type::FunctionDefinition(id) => {
+                let callable_definition = match callee_type {
+                    Type::FunctionDefinition(callable) => callable,
+                    _ => panic!("call has no callable type."),
+                };
+                match callable_definition {
+                    CallableDefinitionId::FunctionDefinition(id) => {
                         let function = &self.function_map[id];
-
                         let arguments: Vec<_> = match function.return_kind {
                             ReturnKind::RegisterValue => None,
                             ReturnKind::ArgumentPointer => {
@@ -506,7 +512,22 @@ impl<'ink> ExpressionLowerer<'ink> {
                             }
                         }
                     }
-                    _ => panic!(),
+                    CallableDefinitionId::ValueConstructor(ValueConstructorId {
+                        parrent_id: _parrent_id,
+                        id,
+                    }) => {
+                        let struct_ptr = stack_value.unwrap();
+
+                        let tag_type = self.context.i32_type();
+                        let tag_ptr = self.builder.build_struct_gep(struct_ptr, 0, "").unwrap();
+
+                        let id = id.into_raw();
+                        let tag = tag_type.const_int(u32::from(id) as u64, false);
+
+                        self.builder.build_store(tag_ptr, tag);
+
+                        struct_ptr.into()
+                    }
                 }
             }
             hir::Expression::Binary(operator, lhs, rhs) => {
@@ -608,27 +629,34 @@ impl<'ink> ExpressionLowerer<'ink> {
                     }
                 }
             }
-            hir::Expression::Literal(literal) => match literal {
-                hir::Literal::Integer(value, kind) => match kind {
-                    Some(kind) => match kind {
-                        hir::IntegerKind::I32 => self
-                            .context
-                            .i32_type()
-                            .const_int(*value as u64, true)
-                            .into(),
-                        hir::IntegerKind::I64 => self
-                            .context
-                            .i64_type()
-                            .const_int(*value as u64, true)
-                            .into(),
+            hir::Expression::Literal(literal) => {
+                let literal_type = &self.inference.type_of_expression[expr_id];
+                match literal_type {
+                    Type::AbstractDataType(_) => todo!(),
+                    Type::FunctionDefinition(_) => todo!(),
+                    Type::Scalar(ScalarType::Integer(kind)) => {
+                        let value = match literal {
+                            hir::Literal::Integer(value, _) => *value,
+                            _ => panic!(),
+                        };
+                        match kind {
+                            hir::IntegerKind::I32 => {
+                                self.context.i32_type().const_int(value as u64, true).into()
+                            }
+                            hir::IntegerKind::I64 => {
+                                self.context.i64_type().const_int(value as u64, true).into()
+                            }
+                        }
+                    }
+                    Type::Scalar(ScalarType::Boolean) => match literal {
+                        hir::Literal::Bool(value) => match value {
+                            true => self.context.bool_type().const_all_ones().into(),
+                            false => self.context.bool_type().const_zero().into(),
+                        },
+                        _ => panic!(),
                     },
-                    None => todo!(),
-                },
-                hir::Literal::Bool(value) => match value {
-                    true => self.context.bool_type().const_all_ones().into(),
-                    false => self.context.bool_type().const_zero().into(),
-                },
-            },
+                }
+            }
         }
     }
 }

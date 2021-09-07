@@ -23,11 +23,11 @@ fn parse_type_definition<S: TokenSource>(p: &mut Parser<S>) {
     let m = p.start();
     p.bump();
     parse_name(p);
-    parse_type_constructors(p);
+    parse_value_constructors(p);
     m.complete(p, TypeDefinition);
 }
 
-fn parse_type_constructors<S: TokenSource>(p: &mut Parser<S>) {
+fn parse_value_constructors<S: TokenSource>(p: &mut Parser<S>) {
     assert!(p.at(OpenBraces));
 
     let m = p.start();
@@ -36,6 +36,7 @@ fn parse_type_constructors<S: TokenSource>(p: &mut Parser<S>) {
     while !p.at(CloseBraces) && p.current() != None {
         let m = p.start();
         parse_name(p);
+        parse_value_constructor_parameters(p);
         m.complete(p, ValueConstructor);
         if p.at(Comma) {
             p.bump();
@@ -44,6 +45,28 @@ fn parse_type_constructors<S: TokenSource>(p: &mut Parser<S>) {
 
     p.expect(CloseBraces);
     m.complete(p, ValueConstructorList);
+}
+
+fn parse_value_constructor_parameters<S: TokenSource>(p: &mut Parser<S>) {
+    if p.at(OpenParenthesis) {
+        let m = p.start();
+        p.bump();
+
+        while !p.at(CloseParenthesis) && p.current() != None {
+            parse_type(p);
+            if p.at(Comma) {
+                p.bump();
+            }
+        }
+
+        p.expect(CloseParenthesis);
+        m.complete(p, ConstructorParameterList);
+    } else {
+        p.error_and_recover(
+            ParseError::new(OpenParenthesis, p.current()),
+            ITEM_RECOVERY_SET,
+        );
+    }
 }
 
 fn parse_function_definition<S: TokenSource>(p: &mut Parser<S>) {
@@ -83,23 +106,46 @@ fn parse_function_parameters<S: TokenSource>(p: &mut Parser<S>) {
 fn parse_pattern<S: TokenSource>(p: &mut Parser<S>) {
     match p.current() {
         Some(Identifier) => match p.nth(1) {
-            Some(DoubleColon) => parse_path_pattern(p),
-            _ => parse_identifier_pattern(p),
+            Some(DoubleColon) => parse_deconstructor_pattern(p),
+            _ => parse_binding_pattern(p),
         },
         x => panic!("try to parse pattern but found {:?}", x),
     }
 }
 
-fn parse_path_pattern<S: TokenSource>(p: &mut Parser<S>) {
+fn parse_deconstructor_pattern<S: TokenSource>(p: &mut Parser<S>) {
     let m = p.start();
     parse_path(p);
-    m.complete(p, PathPattern);
+    parse_binding_pattern_list(p);
+    m.complete(p, DeconstructorPattern);
 }
 
-fn parse_identifier_pattern<S: TokenSource>(p: &mut Parser<S>) {
+fn parse_binding_pattern_list<S: TokenSource>(p: &mut Parser<S>) {
+    if p.at(OpenParenthesis) {
+        let m = p.start();
+        p.bump();
+
+        while !p.at(CloseParenthesis) && p.current() != None {
+            parse_binding_pattern(p);
+            if p.at(Comma) {
+                p.bump();
+            }
+        }
+
+        p.expect(CloseParenthesis);
+        m.complete(p, BindingPatternList);
+    } else {
+        p.error_and_recover(
+            ParseError::new(OpenParenthesis, p.current()),
+            ITEM_RECOVERY_SET,
+        );
+    }
+}
+
+fn parse_binding_pattern<S: TokenSource>(p: &mut Parser<S>) {
     let m = p.start();
     parse_name(p);
-    m.complete(p, IdentifierPattern);
+    m.complete(p, BindingPattern);
 }
 
 fn parse_parameter<S: TokenSource>(p: &mut Parser<S>) {

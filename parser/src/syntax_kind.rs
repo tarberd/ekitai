@@ -49,9 +49,9 @@ pub enum SyntaxKind {
     PathType,
 
     // Patterns
-    /// A Path type destructor (e.g. some::path::to::type)
-    PathPattern,
-    IdentifierPattern,
+    DeconstructorPattern,
+    BindingPatternList,
+    BindingPattern,
 
     // Module Items
     TypeDefinition,
@@ -77,6 +77,7 @@ pub enum SyntaxKind {
     ValueConstructorList,
     Parameter,
     ParameterList,
+    ConstructorParameterList,
     MatchCase,
     MatchCaseList,
     ArgumentList,
