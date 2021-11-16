@@ -16,7 +16,6 @@ impl PathExpression {
     }
 
     pub fn path(&self) -> Option<Path> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|s| Path::try_from(s).ok())
@@ -29,7 +28,7 @@ impl std::fmt::Display for PathExpression {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for PathExpression {
+impl TryFrom<SyntaxNode> for PathExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

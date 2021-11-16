@@ -504,14 +504,14 @@ pub enum TypeableValueDefinitionId {
     ValueConstructor(ValueConstructorId),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Type {
     AbstractDataType(TypeLocationId),
     FunctionDefinition(CallableDefinitionId),
     Scalar(ScalarType),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CallableDefinitionId {
     FunctionDefinition(FunctionLocationId),
     ValueConstructor(ValueConstructorId),
@@ -529,13 +529,13 @@ impl From<ValueConstructorId> for CallableDefinitionId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScalarType {
     Integer(IntegerKind),
     Boolean,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntegerKind {
     I32,
     I64,
@@ -577,7 +577,7 @@ impl TypeDefinition {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValueConstructorId {
     pub parrent_id: TypeLocationId,
     pub id: Idx<ValueConstructor>,
@@ -1440,22 +1440,37 @@ impl<'s> InferenceResultFold<'s> {
         self
     }
 
-    fn fold_pattern(
-        mut self,
-        resolver: &Resolver,
-        pattern_id: PatternId,
-        expected_type: Type,
-    ) -> Self {
-        let ty = match &self.body.patterns[pattern_id] {
-            Pattern::Deconstructor(path, _) => {
+    fn fold_pattern(self, resolver: &Resolver, pattern_id: PatternId, expected_type: Type) -> Self {
+        let (mut fold, ty) = match &self.body.patterns[pattern_id] {
+            Pattern::Deconstructor(path, subpatterns) => {
                 let path_resolver =
                     ValuePathResolver::new(self.db, &self.inference_result, resolver);
-                path_resolver.resolve_type_for_value_path(path)
+                let expected_type = path_resolver.resolve_type_for_value_path(path);
+
+                let subpattern_types = match expected_type {
+                    Type::FunctionDefinition(CallableDefinitionId::ValueConstructor(
+                        constructor_id,
+                    )) => {
+                        let signature =
+                            self.db.callable_definition_signature(constructor_id.into());
+                        signature.parameter_types
+                    }
+                    _ => panic!(),
+                };
+
+                let fold = subpatterns.iter().zip(subpattern_types.into_iter()).fold(
+                    self,
+                    |fold, (pattern_id, pattern_type)| {
+                        fold.fold_pattern(resolver, *pattern_id, pattern_type)
+                    },
+                );
+
+                (fold, expected_type)
             }
-            Pattern::Bind(_) => expected_type,
+            Pattern::Bind(_) => (self, expected_type),
         };
-        self.inference_result.type_of_pattern.insert(pattern_id, ty);
-        self
+        fold.inference_result.type_of_pattern.insert(pattern_id, ty);
+        fold
     }
 
     fn fold_body_root_expression(self) -> Self {

@@ -10,7 +10,6 @@ impl Literal {
     }
 
     pub fn literal_kind(&self) -> TokenLiteral {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
@@ -31,7 +30,7 @@ impl std::fmt::Display for Literal {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Literal {
+impl TryFrom<SyntaxNode> for Literal {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

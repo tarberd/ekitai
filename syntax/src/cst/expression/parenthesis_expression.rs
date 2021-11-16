@@ -16,7 +16,6 @@ impl ParenthesisExpression {
     }
 
     pub fn inner_expression(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|s| Expression::try_from(s).ok())
@@ -29,7 +28,7 @@ impl std::fmt::Display for ParenthesisExpression {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for ParenthesisExpression {
+impl TryFrom<SyntaxNode> for ParenthesisExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

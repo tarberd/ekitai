@@ -10,14 +10,12 @@ impl PrefixExpression {
     }
 
     pub fn inner(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| Expression::try_from(n).ok())
     }
 
     pub fn operator(&self) -> Option<UnaryOperator> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
@@ -37,7 +35,7 @@ impl std::fmt::Display for PrefixExpression {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for PrefixExpression {
+impl TryFrom<SyntaxNode> for PrefixExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

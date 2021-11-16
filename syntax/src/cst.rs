@@ -31,7 +31,6 @@ pub use type_definition::{TypeDefinition, ValueConstructor, ValueConstructorList
 
 use parser::SyntaxKind;
 use raw::{SyntaxNode, SyntaxToken};
-use std::convert::TryFrom;
 use std::fmt::Display;
 
 pub trait CstNode: TryFrom<SyntaxNode, Error = SyntaxToAstError> + Display {

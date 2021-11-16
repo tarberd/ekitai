@@ -10,14 +10,12 @@ impl InfixExpression {
     }
 
     pub fn lhs(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| Expression::try_from(n).ok())
     }
 
     pub fn rhs(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .filter_map(|n| Expression::try_from(n).ok())
@@ -25,7 +23,6 @@ impl InfixExpression {
     }
 
     pub fn operator(&self) -> Option<BinaryOperator> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
@@ -45,7 +42,7 @@ impl std::fmt::Display for InfixExpression {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for InfixExpression {
+impl TryFrom<SyntaxNode> for InfixExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

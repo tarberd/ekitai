@@ -7,11 +7,11 @@ use inkwell::{
     builder::Builder,
     context::Context,
     targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetTriple},
-    types::{AnyType, BasicType, BasicTypeEnum, StructType},
+    types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, StructType},
     values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, IntPredicate, OptimizationLevel,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::FromIterator};
 
 #[salsa::database(
     hir::SourceDatabaseStorage,
@@ -37,6 +37,71 @@ impl Upcast<dyn hir::DefinitionsDatabase> for Database {
 }
 
 impl salsa::Database for Database {}
+
+struct LocalBindingStack<'ink> {
+    stack: Vec<Scope<'ink>>,
+}
+
+impl<'ink> LocalBindingStack<'ink> {
+    pub fn get(&self, name: &Name) -> Option<&BindingValue<'ink>> {
+        self.stack.iter().rev().find_map(|scope| scope.get(name))
+    }
+
+    pub fn push(mut self, scope: Scope<'ink>) -> Self {
+        self.stack.push(scope);
+        self
+    }
+
+    pub fn pop(mut self) -> Self {
+        self.stack.pop();
+        self
+    }
+}
+
+impl<'ink> FromIterator<Scope<'ink>> for LocalBindingStack<'ink> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Scope<'ink>>,
+    {
+        let stack = iter.into_iter().collect();
+        Self { stack }
+    }
+}
+
+struct Scope<'ink> {
+    scope: Vec<Binding<'ink>>,
+}
+
+impl<'ink> Scope<'ink> {
+    pub fn get(&self, name: &Name) -> Option<&BindingValue<'ink>> {
+        self.scope
+            .iter()
+            .find_map(|binding| match &binding.name == name {
+                true => Some(&binding.value),
+                false => None,
+            })
+    }
+}
+
+impl<'ink> FromIterator<Binding<'ink>> for Scope<'ink> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Binding<'ink>>,
+    {
+        let scope = iter.into_iter().collect();
+        Self { scope }
+    }
+}
+
+struct Binding<'ink> {
+    pub name: Name,
+    pub value: BindingValue<'ink>,
+}
+
+struct BindingValue<'ink> {
+    pub kind: ValueKind,
+    pub value: BasicValueEnum<'ink>,
+}
 
 #[derive(Clone, Copy)]
 enum ReturnKind {
@@ -132,12 +197,12 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
             hir::LocationId::FunctionLocationId(_) => continue,
             hir::LocationId::TypeLocationId(ty_id) => {
                 let ty = db.type_definition_data(*ty_id);
+                let sty = context.opaque_struct_type(ty.name.id.as_str());
+                type_map.insert(*ty_id, sty);
 
                 let tag_type = context.i32_type();
 
-                let sty = context.opaque_struct_type(ty.name.id.as_str());
                 sty.set_body(&[tag_type.into()], false);
-                type_map.insert(*ty_id, sty);
             }
         };
     }
@@ -175,12 +240,24 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
                         .into_iter()
                         .chain(param_tys)
                         .unzip();
-                        let function_type = context.void_type().fn_type(&param_types, false);
+                        let function_type = context.void_type().fn_type(
+                            &param_types
+                                .into_iter()
+                                .map(|x| x.into())
+                                .collect::<Vec<_>>(),
+                            false,
+                        );
                         (param_kinds, function_type)
                     }
                     ReturnKind::RegisterValue => {
                         let (param_kinds, param_types): (Vec<_>, Vec<_>) = param_tys.unzip();
-                        let function_type = ret_ty.fn_type(&param_types, false);
+                        let function_type = ret_ty.fn_type(
+                            &param_types
+                                .into_iter()
+                                .map(|x| x.into())
+                                .collect::<Vec<_>>(),
+                            false,
+                        );
                         (param_kinds, function_type)
                     }
                 };
@@ -217,7 +294,7 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
         builder.position_at_end(llvm_body);
 
         let body = db.body_of_definition(*function_id);
-        let local_bindings: HashMap<_, _> = body
+        let parameter_scope = body
             .parameters
             .iter()
             .zip(function.parameters())
@@ -227,11 +304,19 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
                     hir::Pattern::Deconstructor(_, _) => todo!("Unsing unsuported path pattern"),
                     hir::Pattern::Bind(name) => {
                         parameter.set_name(&name.id);
-                        (name.clone(), (parameter, *parameter_kind))
+                        Binding {
+                            name: name.clone(),
+                            value: BindingValue {
+                                kind: *parameter_kind,
+                                value: parameter,
+                            },
+                        }
                     }
                 }
             })
-            .collect();
+            .collect::<Scope>();
+
+        let binding_stack = std::iter::once(parameter_scope).collect();
 
         let return_value_ptr = match function.return_kind {
             ReturnKind::ArgumentPointer => Some(
@@ -250,7 +335,7 @@ pub fn build_assembly_ir(db: &dyn HirDatabase) {
             db,
             &type_map,
             &function_map,
-            &local_bindings,
+            binding_stack,
             *function_id,
             &body,
         )
@@ -276,7 +361,7 @@ struct ExpressionLowerer<'ink> {
     body: &'ink Body,
     type_map: &'ink HashMap<TypeLocationId, StructType<'ink>>,
     function_map: &'ink HashMap<FunctionLocationId, FunctionIr<'ink>>,
-    local_bindings: &'ink HashMap<Name, (BasicValueEnum<'ink>, ValueKind)>,
+    binding_stack: LocalBindingStack<'ink>,
     inference: InferenceResult,
 }
 
@@ -287,7 +372,7 @@ impl<'ink> ExpressionLowerer<'ink> {
         db: &'ink dyn HirDatabase,
         type_map: &'ink HashMap<TypeLocationId, StructType<'ink>>,
         function_map: &'ink HashMap<FunctionLocationId, FunctionIr<'ink>>,
-        local_bindings: &'ink HashMap<Name, (BasicValueEnum<'ink>, ValueKind)>,
+        binding_stack: LocalBindingStack<'ink>,
         function_id: FunctionLocationId,
         body: &'ink Body,
     ) -> Self {
@@ -298,7 +383,7 @@ impl<'ink> ExpressionLowerer<'ink> {
             type_map,
             function_map,
             function_id,
-            local_bindings,
+            binding_stack,
             body,
             inference: db.infer_body_expression_types(function_id),
         }
@@ -363,95 +448,107 @@ impl<'ink> ExpressionLowerer<'ink> {
             hir::Expression::Match { matchee, case_list } => {
                 let matchee_value = self.fold_expression(None, *matchee);
 
-                let matchee_ty = &self.inference.type_of_expression[*matchee];
-
-                match matchee_ty {
-                    Type::AbstractDataType(_) => {
-                        let merge_block = self
-                            .context
-                            .append_basic_block(self.get_owener_function_value(), "case.merge");
+                let switchee_value = match matchee_value.get_type() {
+                    BasicTypeEnum::IntType(_) => matchee_value.into_int_value(),
+                    BasicTypeEnum::PointerType(pointer_type) => {
+                        // TODO: this assumes pointer is aways to adt on stack
+                        let struct_type = match pointer_type.get_element_type() {
+                            AnyTypeEnum::StructType(struct_type) => struct_type,
+                            _ => panic!(),
+                        };
+                        let tag_type = struct_type
+                            .get_field_types()
+                            .first()
+                            .unwrap()
+                            .into_int_type();
 
                         let tag_ptr = self.builder.build_bitcast(
                             matchee_value,
-                            self.context.i32_type().ptr_type(AddressSpace::Generic),
+                            tag_type.ptr_type(AddressSpace::Generic),
                             "",
                         );
-                        let tag = self.builder.build_load(tag_ptr.into_pointer_value(), "");
-                        let resolver =
-                            Resolver::new_for_expression(self.db, self.function_id, expr_id);
-                        let (cases, case_expressions): (Vec<_>, Vec<ExpressionId>) = case_list.iter().map(|(pattern_id, case_expression)| {
-                            let case_pattern = &self.body.patterns[*pattern_id];
-                            match case_pattern {
-                                hir::Pattern::Deconstructor(path, _) => {
-
-                                    let item = resolver
-                                        .resolve_path_in_value_namespace(self.db.upcast(), path)
-                                        .unwrap();
-
-                                    let tag = match item {
-                                        hir::ValueNamespaceItem::ValueConstructor(ValueConstructorId{id, ..}) => {
-                                            let tag = u32::from(id.into_raw());
-                                            let tag_value = self.context.i32_type().const_int(tag as u64, false);
-                                            (tag, tag_value)
-                                        },
-                                        item => panic!("namespace resolution must be constructor but found :{:?}, missing typecheck?", item),
-                                    };
-
-                                    (tag, case_expression)
-                                }
-                                hir::Pattern::Bind(_) => todo!(),
-                            }
-                        })
-                        .map(|((tag, tag_value), case_expression)| {
-                            let case_block = self.context.prepend_basic_block(
-                                merge_block,
-                                format!("case.{}tag", tag).as_str(),
-                            );
-                            ((tag_value, case_block), case_expression)
-                        }).unzip();
-
-                        let else_block = self
-                            .context
-                            .prepend_basic_block(cases.first().unwrap().1, "case.else");
-
-                        self.builder.build_switch(
-                            tag.into_int_value(),
-                            else_block,
-                            cases.as_slice().as_ref(),
-                        );
-
-                        self.builder.position_at_end(else_block);
-                        self.builder.build_unreachable();
-
-                        let mut case_values = Vec::new();
-                        for ((_, case_block), case_expression) in
-                            cases.iter().zip(case_expressions.iter())
-                        {
-                            self.builder.position_at_end(*case_block);
-                            let case_value = self.fold_expression(stack_value, *case_expression);
-                            case_values.push(case_value);
-                            self.builder.build_unconditional_branch(merge_block);
-                        }
-                        self.builder.position_at_end(merge_block);
-                        match stack_value {
-                            Some(ptr) => ptr.into(),
-                            None => {
-                                let phi = self
-                                    .builder
-                                    .build_phi(case_values.first().unwrap().get_type(), "phi");
-                                phi.add_incoming(
-                                    case_values
-                                        .iter()
-                                        .map(|basic_value| basic_value as &dyn BasicValue)
-                                        .zip(cases.iter().map(|(_, block)| block).cloned())
-                                        .collect::<Vec<_>>()
-                                        .as_slice(),
-                                );
-                                phi.as_basic_value()
-                            }
-                        }
+                        self.builder
+                            .build_load(tag_ptr.into_pointer_value(), "")
+                            .into_int_value()
                     }
-                    _ => panic!(),
+                    BasicTypeEnum::ArrayType(_) => todo!(),
+                    BasicTypeEnum::FloatType(_) => todo!(),
+                    BasicTypeEnum::StructType(_) => {
+                        todo!()
+                    }
+                    BasicTypeEnum::VectorType(_) => todo!(),
+                };
+
+                let else_block = self
+                    .context
+                    .append_basic_block(self.get_owener_function_value(), "case.else");
+                let merge_block = self
+                    .context
+                    .append_basic_block(self.get_owener_function_value(), "case.merge");
+
+                let resolver = Resolver::new_for_expression(self.db, self.function_id, expr_id);
+                let cases: Vec<_> = case_list
+                    .iter()
+                    .map(|(pattern_id, _)| {
+                        let case_pattern = &self.body.patterns[*pattern_id];
+                        match case_pattern {
+                            hir::Pattern::Deconstructor(path, _) => {
+                                let item = resolver
+                                    .resolve_path_in_value_namespace(self.db.upcast(), path)
+                                    .unwrap();
+                                let tag = match item {
+                                    hir::ValueNamespaceItem::ValueConstructor(
+                                        ValueConstructorId { id, .. },
+                                    ) => u32::from(id.into_raw()),
+                                    _ => panic!(),
+                                };
+                                let tag_value =
+                                    switchee_value.get_type().const_int(tag as u64, false);
+                                let case_block = self.context.prepend_basic_block(
+                                    merge_block,
+                                    format!("case.{}tag", tag).as_str(),
+                                );
+                                (tag_value, case_block)
+                            }
+                            hir::Pattern::Bind(_) => todo!(),
+                        }
+                    })
+                    .collect();
+
+                self.builder
+                    .build_switch(switchee_value, else_block, cases.as_slice().as_ref());
+
+                self.builder.position_at_end(else_block);
+                self.builder.build_unreachable();
+
+                let case_values: Vec<_> = cases
+                    .iter()
+                    .zip(case_list.iter().map(|(_, expr)| expr))
+                    .map(|((_, case_block), case_expression)| {
+                        self.builder.position_at_end(*case_block);
+                        let case_value = self.fold_expression(stack_value, *case_expression);
+                        self.builder.build_unconditional_branch(merge_block);
+                        case_value
+                    })
+                    .collect();
+
+                self.builder.position_at_end(merge_block);
+                match stack_value {
+                    Some(ptr) => ptr.into(),
+                    None => {
+                        let phi = self
+                            .builder
+                            .build_phi(case_values.first().unwrap().get_type(), "phi");
+                        phi.add_incoming(
+                            case_values
+                                .iter()
+                                .map(|basic_value| basic_value as &dyn BasicValue)
+                                .zip(cases.iter().map(|(_, block)| block).cloned())
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                        );
+                        phi.as_basic_value()
+                    }
                 }
             }
             hir::Expression::Call { callee, arguments } => {
@@ -501,9 +598,15 @@ impl<'ink> ExpressionLowerer<'ink> {
                         ))
                         .collect();
 
-                        let call_value =
-                            self.builder
-                                .build_call(function.value, arguments.as_slice(), "");
+                        let call_value = self.builder.build_call(
+                            function.value,
+                            arguments
+                                .into_iter()
+                                .map(|x| x.into())
+                                .collect::<Vec<_>>()
+                                .as_slice(),
+                            "",
+                        );
 
                         match function.return_kind {
                             ReturnKind::ArgumentPointer => stack_value.unwrap().into(),
@@ -613,7 +716,12 @@ impl<'ink> ExpressionLowerer<'ink> {
                             hir::Pattern::Deconstructor(_, _) => todo!(),
                             hir::Pattern::Bind(name) => match stack_value {
                                 Some(ptr) => {
-                                    let source = self.local_bindings[name].0.into_pointer_value();
+                                    let source = self
+                                        .binding_stack
+                                        .get(name)
+                                        .unwrap()
+                                        .value
+                                        .into_pointer_value();
                                     let _ = self.builder.build_memcpy(
                                         ptr,
                                         4,
@@ -623,7 +731,7 @@ impl<'ink> ExpressionLowerer<'ink> {
                                     );
                                     source.into()
                                 }
-                                None => self.local_bindings[name].0,
+                                None => self.binding_stack.get(name).unwrap().value,
                             },
                         }
                     }

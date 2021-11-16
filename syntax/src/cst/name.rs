@@ -16,7 +16,6 @@ impl Name {
     }
 
     pub fn identifier(&self) -> Identifier {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children_with_tokens()
             .filter_map(|it| it.into_token())
@@ -31,7 +30,7 @@ impl std::fmt::Display for Name {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Name {
+impl TryFrom<SyntaxNode> for Name {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

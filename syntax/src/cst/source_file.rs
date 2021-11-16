@@ -12,7 +12,6 @@ impl CstNode for SourceFile {
 
 impl SourceFile {
     pub fn module_items(&self) -> impl Iterator<Item = ModuleItem> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .filter_map(|s| ModuleItem::try_from(s).ok())
@@ -29,7 +28,7 @@ impl std::fmt::Display for SourceFile {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for SourceFile {
+impl TryFrom<SyntaxNode> for SourceFile {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

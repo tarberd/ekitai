@@ -2,11 +2,11 @@
 name = "parser"
 version = "0.1.0"
 authors = ["tarberd <bernardo.mferrari@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-drop_bomb = "0.1"
-num-traits = "0.2"
-num-derive = "0.3"
+drop_bomb = "0.1.5"
+num-traits = "0.2.14"
+num-derive = "0.3.3"

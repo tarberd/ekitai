@@ -1,5 +1,4 @@
 use logos::Logos;
-use std::convert::TryFrom;
 use std::ops::Range as StdRange;
 use text_size::{TextRange, TextSize};
 

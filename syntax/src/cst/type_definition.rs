@@ -16,14 +16,12 @@ impl TypeDefinition {
     }
 
     pub fn name(&self) -> Option<Name> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|it| Name::try_from(it).ok())
     }
 
     pub fn value_constructor_list(&self) -> Option<ValueConstructorList> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|it| ValueConstructorList::try_from(it).ok())
@@ -36,7 +34,7 @@ impl std::fmt::Display for TypeDefinition {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for TypeDefinition {
+impl TryFrom<SyntaxNode> for TypeDefinition {
     type Error = SyntaxToAstError;
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
         match syntax_node.kind() {
@@ -61,14 +59,12 @@ impl ValueConstructor {
     }
 
     pub fn name(&self) -> Option<Name> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| Name::try_from(n).ok())
     }
 
     pub fn constructor_parameter_list(&self) -> Option<ConstructorParameterList> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| ConstructorParameterList::try_from(n).ok())
@@ -81,7 +77,7 @@ impl std::fmt::Display for ValueConstructor {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for ValueConstructor {
+impl TryFrom<SyntaxNode> for ValueConstructor {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -107,7 +103,6 @@ impl ValueConstructorList {
     }
 
     pub fn constructors(&self) -> impl Iterator<Item = ValueConstructor> {
-        use std::convert::TryFrom;
         let mut children = self.as_syntax_node().children();
         std::iter::from_fn(move || {
             children
@@ -123,7 +118,7 @@ impl std::fmt::Display for ValueConstructorList {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for ValueConstructorList {
+impl TryFrom<SyntaxNode> for ValueConstructorList {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -149,7 +144,6 @@ impl ConstructorParameterList {
     }
 
     pub fn types(&self) -> impl Iterator<Item = Type> {
-        use std::convert::TryFrom;
         let mut children = self.as_syntax_node().children();
         std::iter::from_fn(move || {
             children
@@ -165,7 +159,7 @@ impl std::fmt::Display for ConstructorParameterList {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for ConstructorParameterList {
+impl TryFrom<SyntaxNode> for ConstructorParameterList {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

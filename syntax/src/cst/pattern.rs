@@ -44,7 +44,7 @@ impl std::fmt::Display for Pattern {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Pattern {
+impl TryFrom<SyntaxNode> for Pattern {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -70,7 +70,6 @@ impl BindingPattern {
     }
 
     pub fn name(&self) -> Option<Name> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| Name::try_from(n).ok())
@@ -83,7 +82,7 @@ impl std::fmt::Display for BindingPattern {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for BindingPattern {
+impl TryFrom<SyntaxNode> for BindingPattern {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -109,14 +108,12 @@ impl DeconstructorPattern {
     }
 
     pub fn path(&self) -> Option<Path> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| Path::try_from(n).ok())
     }
 
     pub fn pattern_list(&self) -> Option<PatternList> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| PatternList::try_from(n).ok())
@@ -129,7 +126,7 @@ impl std::fmt::Display for DeconstructorPattern {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for DeconstructorPattern {
+impl TryFrom<SyntaxNode> for DeconstructorPattern {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -155,7 +152,6 @@ impl PatternList {
     }
 
     pub fn patterns(&self) -> impl Iterator<Item = Pattern> {
-        use std::convert::TryFrom;
         let mut children = self.as_syntax_node().children();
         std::iter::from_fn(move || {
             children
@@ -171,7 +167,7 @@ impl std::fmt::Display for PatternList {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for PatternList {
+impl TryFrom<SyntaxNode> for PatternList {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

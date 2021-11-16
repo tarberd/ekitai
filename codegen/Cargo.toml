@@ -2,12 +2,12 @@
 name = "codegen"
 version = "0.1.0"
 authors = ["tarberd <bernardo.mferrari@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 hir = { path = "../hir" }
-smol_str = "0.1.17"
-inkwell = { git = "https://github.com/tarberd/inkwell", branch = "feature_type_attributes", features = ["llvm12-0"] }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"] }
 salsa = "0.16.1"
+smol_str = "0.1.21"

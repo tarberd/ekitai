@@ -54,7 +54,7 @@ impl std::fmt::Display for False {
     }
 }
 
-impl std::convert::TryFrom<SyntaxToken> for False {
+impl TryFrom<SyntaxToken> for False {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {

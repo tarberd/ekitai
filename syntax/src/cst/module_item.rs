@@ -44,7 +44,7 @@ impl std::fmt::Display for ModuleItem {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for ModuleItem {
+impl TryFrom<SyntaxNode> for ModuleItem {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

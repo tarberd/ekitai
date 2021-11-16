@@ -16,14 +16,12 @@ impl CallExpression {
     }
 
     pub fn callee(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|s| Expression::try_from(s).ok())
     }
 
     pub fn argument_list(&self) -> Option<ArgumentList> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|s| ArgumentList::try_from(s).ok())
@@ -36,7 +34,7 @@ impl std::fmt::Display for CallExpression {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for CallExpression {
+impl TryFrom<SyntaxNode> for CallExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -62,7 +60,6 @@ impl ArgumentList {
     }
 
     pub fn arguments(&self) -> impl Iterator<Item = Expression> {
-        use std::convert::TryFrom;
         let mut children = self.as_syntax_node().children();
         std::iter::from_fn(move || children.by_ref().find_map(|n| Expression::try_from(n).ok()))
     }
@@ -74,7 +71,7 @@ impl std::fmt::Display for ArgumentList {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for ArgumentList {
+impl TryFrom<SyntaxNode> for ArgumentList {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

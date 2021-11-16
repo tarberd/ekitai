@@ -102,7 +102,7 @@ impl std::fmt::Display for Expression {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Expression {
+impl TryFrom<SyntaxNode> for Expression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

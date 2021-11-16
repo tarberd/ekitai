@@ -16,7 +16,6 @@ impl BlockExpression {
     }
 
     pub fn tail_expression(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|s| Expression::try_from(s).ok())
@@ -29,7 +28,7 @@ impl std::fmt::Display for BlockExpression {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for BlockExpression {
+impl TryFrom<SyntaxNode> for BlockExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

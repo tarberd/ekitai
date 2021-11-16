@@ -16,14 +16,12 @@ impl Path {
     }
 
     pub fn path_segment(&self) -> Option<PathSegment> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| PathSegment::try_from(n).ok())
     }
 
     pub fn path(&self) -> Option<Path> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| Path::try_from(n).ok())
@@ -36,7 +34,7 @@ impl std::fmt::Display for Path {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Path {
+impl TryFrom<SyntaxNode> for Path {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -62,7 +60,6 @@ impl PathSegment {
     }
 
     pub fn name_reference(&self) -> Option<NameReference> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| NameReference::try_from(n).ok())
@@ -75,7 +72,7 @@ impl std::fmt::Display for PathSegment {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for PathSegment {
+impl TryFrom<SyntaxNode> for PathSegment {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

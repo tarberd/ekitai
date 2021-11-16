@@ -16,14 +16,12 @@ impl IfExpression {
     }
 
     pub fn condition(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|s| Expression::try_from(s).ok())
     }
 
     pub fn then_branch(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .filter_map(|s| Expression::try_from(s).ok())
@@ -31,7 +29,6 @@ impl IfExpression {
     }
 
     pub fn else_branch(&self) -> Option<Expression> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .filter_map(|s| Expression::try_from(s).ok())
@@ -45,7 +42,7 @@ impl std::fmt::Display for IfExpression {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for IfExpression {
+impl TryFrom<SyntaxNode> for IfExpression {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {

@@ -33,7 +33,7 @@ impl std::fmt::Display for Type {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for Type {
+impl TryFrom<SyntaxNode> for Type {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
@@ -59,7 +59,6 @@ impl PathType {
     }
 
     pub fn path(&self) -> Option<Path> {
-        use std::convert::TryFrom;
         self.as_syntax_node()
             .children()
             .find_map(|n| Path::try_from(n).ok())
@@ -72,7 +71,7 @@ impl std::fmt::Display for PathType {
     }
 }
 
-impl std::convert::TryFrom<SyntaxNode> for PathType {
+impl TryFrom<SyntaxNode> for PathType {
     type Error = SyntaxToAstError;
 
     fn try_from(syntax_node: SyntaxNode) -> Result<Self, Self::Error> {
