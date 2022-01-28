@@ -475,6 +475,32 @@ impl ItemScope {
             }),
         )
     }
+
+    pub fn iter_type_locations(&self) -> impl Iterator<Item = &TypeLocationId> {
+        let mut iter = self.definitions.iter();
+        std::iter::from_fn(move || {
+            while let Some(def) = iter.next() {
+                match def {
+                    LocationId::TypeLocationId(id) => return Some(id),
+                    _ => continue,
+                }
+            }
+            None
+        })
+    }
+
+    pub fn iter_function_locations(&self) -> impl Iterator<Item = &FunctionLocationId> {
+        let mut iter = self.definitions.iter();
+        std::iter::from_fn(move || {
+            while let Some(def) = iter.next() {
+                match def {
+                    LocationId::FunctionLocationId(id) => return Some(id),
+                    _ => continue,
+                }
+            }
+            None
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -557,7 +583,7 @@ pub struct TypeDefinitionData {
 }
 
 impl TypeDefinitionData {
-    pub(crate) fn value_constructor(&self, id: Idx<ValueConstructor>) -> &ValueConstructor {
+    pub fn value_constructor(&self, id: Idx<ValueConstructor>) -> &ValueConstructor {
         &self.value_constructors[id]
     }
 }

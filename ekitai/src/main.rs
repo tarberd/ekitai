@@ -1,6 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
 
+use codegen::{
+    CodeGenTarget, CodeGenTargetABI, CodeGenTargetArch, CodeGenTargetSystem, CodeGenTargetTriple,
+    CodeGenTargetVendor,
+};
+
 fn main() {
     let args: Vec<_> = std::env::args().into_iter().map(PathBuf::from).collect();
 
@@ -14,5 +19,13 @@ fn main() {
 }
 
 fn drive(source: String) {
-    codegen::compile_text(source);
+    let target = CodeGenTarget {
+        triple: CodeGenTargetTriple {
+            arch: CodeGenTargetArch::X86_64,
+            vendor: CodeGenTargetVendor::PC,
+            system: CodeGenTargetSystem::Linux,
+            abi: CodeGenTargetABI::GNU,
+        },
+    };
+    codegen::compile_text(source, target);
 }
