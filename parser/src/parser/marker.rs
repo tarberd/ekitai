@@ -35,16 +35,28 @@ impl Marker {
             forward_parent: None,
         };
 
+        let end = p.events.len();
         p.events.push(Event::FinishNode);
 
         CompletedMarker {
-            position: self.position,
+            start: self.position,
+            end,
+            kind,
+        }
+    }
+    pub(crate) fn abandon<S: TokenSource>(mut self, p: &mut Parser<S>) {
+        self.bomb.defuse();
+
+        if self.position == p.events.len() - 1 {
+            p.events.pop().unwrap();
         }
     }
 }
 
 pub(crate) struct CompletedMarker {
-    position: usize,
+    start: usize,
+    end: usize,
+    kind: SyntaxKind,
 }
 
 impl CompletedMarker {
@@ -54,13 +66,34 @@ impl CompletedMarker {
         if let Event::StartNode {
             ref mut forward_parent,
             ..
-        } = p.events[self.position]
+        } = p.events[self.start]
         {
-            *forward_parent = Some(new_m.position - self.position);
+            *forward_parent = Some(new_m.position - self.start);
         } else {
             unreachable!();
         }
 
         new_m
+    }
+
+    pub(crate) fn undo_completion<S: TokenSource>(self, p: &mut Parser<S>) -> Marker {
+        match p.events[self.start] {
+            ref mut event @ Event::StartNode {
+                forward_parent: None,
+                ..
+            } => {
+                *event = Event::Abandoned;
+            }
+            _ => unreachable!(),
+        };
+        match p.events[self.end] {
+            ref mut slot @ Event::FinishNode => *slot = Event::Abandoned,
+            _ => unreachable!(),
+        }
+        Marker::new(self.start)
+    }
+
+    pub(crate) fn kind(&self) -> SyntaxKind {
+        self.kind
     }
 }

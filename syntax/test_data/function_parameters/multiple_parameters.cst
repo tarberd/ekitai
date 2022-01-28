@@ -54,30 +54,31 @@ SourceFile@0..53
             Identifier@36..39 "i32"
     Whitespace@39..40 " "
     BlockExpression@40..53
-      OpenBraces@40..41 "{"
-      Whitespace@41..42 " "
-      InfixExpression@42..51
-        InfixExpression@42..47
-          PathExpression@42..43
-            Path@42..43
-              PathSegment@42..43
-                NameReference@42..43
-                  Identifier@42..43 "a"
-          Whitespace@43..44 " "
-          Plus@44..45 "+"
-          Whitespace@45..46 " "
-          PathExpression@46..47
-            Path@46..47
-              PathSegment@46..47
-                NameReference@46..47
-                  Identifier@46..47 "b"
-        Whitespace@47..48 " "
-        Plus@48..49 "+"
-        Whitespace@49..50 " "
-        PathExpression@50..51
-          Path@50..51
-            PathSegment@50..51
-              NameReference@50..51
-                Identifier@50..51 "c"
-      Whitespace@51..52 " "
-      CloseBraces@52..53 "}"
+      StatementList@40..53
+        OpenBraces@40..41 "{"
+        Whitespace@41..42 " "
+        InfixExpression@42..51
+          InfixExpression@42..47
+            PathExpression@42..43
+              Path@42..43
+                PathSegment@42..43
+                  NameReference@42..43
+                    Identifier@42..43 "a"
+            Whitespace@43..44 " "
+            Plus@44..45 "+"
+            Whitespace@45..46 " "
+            PathExpression@46..47
+              Path@46..47
+                PathSegment@46..47
+                  NameReference@46..47
+                    Identifier@46..47 "b"
+          Whitespace@47..48 " "
+          Plus@48..49 "+"
+          Whitespace@49..50 " "
+          PathExpression@50..51
+            Path@50..51
+              PathSegment@50..51
+                NameReference@50..51
+                  Identifier@50..51 "c"
+        Whitespace@51..52 " "
+        CloseBraces@52..53 "}"

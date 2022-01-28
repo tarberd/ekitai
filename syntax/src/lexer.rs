@@ -74,6 +74,7 @@ fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
         TokenKind::DoubleAmpersand => SyntaxKind::DoubleAmpersand,
         TokenKind::ThinArrow => SyntaxKind::ThinArrow,
         TokenKind::FnKw => SyntaxKind::FnKw,
+        TokenKind::LetKw => SyntaxKind::LetKw,
         TokenKind::IfKw => SyntaxKind::IfKw,
         TokenKind::ElseKw => SyntaxKind::ElseKw,
         TokenKind::TrueKw => SyntaxKind::TrueKw,

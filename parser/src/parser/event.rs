@@ -1,7 +1,7 @@
+use super::ParseError;
 use crate::syntax_kind::SyntaxKind;
 use crate::TreeSink;
 use std::mem;
-use super::ParseError;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Event {
@@ -11,6 +11,7 @@ pub(crate) enum Event {
     },
     FinishNode,
     AddToken,
+    Abandoned,
     Error(ParseError),
     Placeholder,
 }
@@ -40,6 +41,9 @@ where
                             forward_parents.push(kind);
                             forward_parent
                         }
+                        Event::Abandoned => {
+                            None
+                        }
                         _ => unreachable!(),
                     };
                 }
@@ -51,7 +55,7 @@ where
             Event::FinishNode => sink.finish_node(),
             Event::AddToken => sink.add_token(),
             Event::Error(err) => sink.add_error(err),
-            Event::Placeholder => {}
+            Event::Placeholder | Event::Abandoned => {}
         }
     }
     sink

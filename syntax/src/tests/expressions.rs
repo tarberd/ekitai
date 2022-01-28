@@ -1,5 +1,7 @@
 use super::*;
 
+mod block_expression;
+
 fn check_str(actual: &str, expect: Expect) {
     let parse = Expression::parse(actual);
     expect.assert_eq(&parse.debug_dump());
@@ -418,47 +420,6 @@ fn function_call_with_arguments() {
 }
 
 #[test]
-fn expression_blocks() {
-    check_str(
-        "{0}",
-        expect![[r#"
-            BlockExpression@0..3
-              OpenBraces@0..1 "{"
-              Literal@1..2
-                Integer@1..2 "0"
-              CloseBraces@2..3 "}""#]],
-    );
-    check_str(
-        "{({{(foo())}})}",
-        expect![[r#"
-            BlockExpression@0..15
-              OpenBraces@0..1 "{"
-              ParenthesisExpression@1..14
-                OpenParenthesis@1..2 "("
-                BlockExpression@2..13
-                  OpenBraces@2..3 "{"
-                  BlockExpression@3..12
-                    OpenBraces@3..4 "{"
-                    ParenthesisExpression@4..11
-                      OpenParenthesis@4..5 "("
-                      CallExpression@5..10
-                        PathExpression@5..8
-                          Path@5..8
-                            PathSegment@5..8
-                              NameReference@5..8
-                                Identifier@5..8 "foo"
-                        ArgumentList@8..10
-                          OpenParenthesis@8..9 "("
-                          CloseParenthesis@9..10 ")"
-                      CloseParenthesis@10..11 ")"
-                    CloseBraces@11..12 "}"
-                  CloseBraces@12..13 "}"
-                CloseParenthesis@13..14 ")"
-              CloseBraces@14..15 "}""#]],
-    );
-}
-
-#[test]
 fn bollean_comparions() {
     check_str(
         "a == a",
@@ -736,22 +697,24 @@ fn if_expression() {
                   Integer@8..9 "0"
               Whitespace@9..10 " "
               BlockExpression@10..15
-                OpenBraces@10..11 "{"
-                Whitespace@11..12 " "
-                Literal@12..13
-                  Integer@12..13 "0"
-                Whitespace@13..14 " "
-                CloseBraces@14..15 "}"
+                StatementList@10..15
+                  OpenBraces@10..11 "{"
+                  Whitespace@11..12 " "
+                  Literal@12..13
+                    Integer@12..13 "0"
+                  Whitespace@13..14 " "
+                  CloseBraces@14..15 "}"
               Whitespace@15..16 " "
               ElseKw@16..20 "else"
               Whitespace@20..21 " "
               BlockExpression@21..26
-                OpenBraces@21..22 "{"
-                Whitespace@22..23 " "
-                Literal@23..24
-                  Integer@23..24 "5"
-                Whitespace@24..25 " "
-                CloseBraces@25..26 "}""#]],
+                StatementList@21..26
+                  OpenBraces@21..22 "{"
+                  Whitespace@22..23 " "
+                  Literal@23..24
+                    Integer@23..24 "5"
+                  Whitespace@24..25 " "
+                  CloseBraces@25..26 "}""#]],
     );
 }
 

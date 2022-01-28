@@ -1,0 +1,64 @@
+BlockExpression@0..51
+  StatementList@0..51
+    OpenBraces@0..1 "{"
+    Whitespace@1..6 "\n    "
+    LetStatement@6..20
+      LetKw@6..9 "let"
+      Whitespace@9..10 " "
+      BindingPattern@10..11
+        Name@10..11
+          Identifier@10..11 "x"
+      Whitespace@11..12 " "
+      Equals@12..13 "="
+      Whitespace@13..14 " "
+      InfixExpression@14..19
+        Literal@14..15
+          Integer@14..15 "5"
+        Whitespace@15..16 " "
+        Asterisk@16..17 "*"
+        Whitespace@17..18 " "
+        Literal@18..19
+          Integer@18..19 "5"
+      SemiColon@19..20 ";"
+    Whitespace@20..25 "\n    "
+    LetStatement@25..39
+      LetKw@25..28 "let"
+      Whitespace@28..29 " "
+      BindingPattern@29..30
+        Name@29..30
+          Identifier@29..30 "y"
+      Whitespace@30..31 " "
+      Equals@31..32 "="
+      Whitespace@32..33 " "
+      InfixExpression@33..38
+        PathExpression@33..34
+          Path@33..34
+            PathSegment@33..34
+              NameReference@33..34
+                Identifier@33..34 "x"
+        Whitespace@34..35 " "
+        Plus@35..36 "+"
+        Whitespace@36..37 " "
+        PathExpression@37..38
+          Path@37..38
+            PathSegment@37..38
+              NameReference@37..38
+                Identifier@37..38 "x"
+      SemiColon@38..39 ";"
+    Whitespace@39..44 "\n    "
+    InfixExpression@44..49
+      PathExpression@44..45
+        Path@44..45
+          PathSegment@44..45
+            NameReference@44..45
+              Identifier@44..45 "y"
+      Whitespace@45..46 " "
+      Asterisk@46..47 "*"
+      Whitespace@47..48 " "
+      PathExpression@48..49
+        Path@48..49
+          PathSegment@48..49
+            NameReference@48..49
+              Identifier@48..49 "y"
+    Whitespace@49..50 "\n"
+    CloseBraces@50..51 "}"

@@ -60,6 +60,8 @@ pub enum TokenKind {
     FatArrow,
     #[token("fn")]
     FnKw,
+    #[token("let")]
+    LetKw,
     #[token("if")]
     IfKw,
     #[token("else")]
@@ -274,6 +276,11 @@ mod tests {
     #[test]
     fn lex_fn() {
         check("fn", TokenKind::FnKw);
+    }
+
+    #[test]
+    fn lex_let() {
+        check("let", TokenKind::LetKw);
     }
 
     #[test]

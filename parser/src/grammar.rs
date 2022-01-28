@@ -1,5 +1,5 @@
 use super::{ParseError, Parser};
-use crate::parser::marker::CompletedMarker;
+use crate::parser::marker::{CompletedMarker, Marker};
 use crate::syntax_kind::SyntaxKind::{self, *};
 use crate::TokenSource;
 
@@ -214,15 +214,61 @@ fn parse_path_type<S: TokenSource>(p: &mut Parser<S>) {
 fn parse_block_expression<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
     if p.at(OpenBraces) {
         let m = p.start();
-        p.bump();
-        expression(p);
-        p.expect(CloseBraces);
+        parse_statement_list(p);
         let mark = m.complete(p, BlockExpression);
         Some(mark)
     } else {
         p.error(ParseError::new(OpenBraces, p.current()));
         None
     }
+}
+
+fn parse_statement_list<S: TokenSource>(p: &mut Parser<S>) {
+    assert!(p.at(OpenBraces));
+    let mark = p.start();
+    p.bump();
+    while !p.at(CloseBraces) && p.current() != None {
+        if p.at(SemiColon) {
+            p.bump();
+        }
+
+        parse_statement(p);
+    }
+    p.expect(CloseBraces);
+    mark.complete(p, StatementList);
+}
+
+fn parse_statement<S: TokenSource>(p: &mut Parser<S>) {
+    let mark = p.start();
+
+    if p.at(LetKw) {
+        parse_let_statement(p, mark);
+    } else {
+        let completed_mark = expression_completed_marker(p);
+        let kind = completed_mark.as_ref().map(|cm| cm.kind()).unwrap_or(Error);
+
+        if p.at(CloseBraces) {
+            if let Some(cm) = completed_mark {
+                cm.undo_completion(p).abandon(p);
+                mark.complete(p, kind);
+            } else {
+                mark.abandon(p);
+            }
+        } else {
+            p.expect(SemiColon);
+            mark.complete(p, ExpressionStatement);
+        }
+    }
+}
+
+fn parse_let_statement<S: TokenSource>(p: &mut Parser<S>, mark: Marker) {
+    assert!(p.at(LetKw));
+    p.bump();
+    parse_pattern(p);
+    p.expect(Equals);
+    expression(p);
+    p.expect(SemiColon);
+    mark.complete(p, LetStatement);
 }
 
 enum PrefixOp {
@@ -268,6 +314,10 @@ impl InfixOp {
             Self::Mul | Self::Div | Self::Rest => (7, 8),
         }
     }
+}
+
+fn expression_completed_marker<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
+    expression_binding_power(p, 0)
 }
 
 pub fn expression<S: TokenSource>(p: &mut Parser<S>) {

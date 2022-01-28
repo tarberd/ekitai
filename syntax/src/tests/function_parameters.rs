@@ -1,25 +1,29 @@
 use super::*;
 
-fn data_dir() -> PathBuf {
-    test_data_dir().join("function_parameters")
+fn check_file(test_file: &str) {
+    super::check_file(
+        &test_data_dir().join("function_parameters"),
+        &SourceFile::parse,
+        test_file,
+    );
 }
 
 #[test]
 fn single_parameter() {
-    check_file(&data_dir(), "single_parameter");
+    check_file("single_parameter");
 }
 
 #[test]
 fn multiple_parameters() {
-    check_file(&data_dir(), "multiple_parameters");
+    check_file("multiple_parameters");
 }
 
 #[test]
 fn trailing_parameter_comma() {
-    check_file(&data_dir(), "trailing_parameter_comma");
+    check_file("trailing_parameter_comma");
 }
 
 #[test]
 fn missing_body() {
-    check_file(&data_dir(), "missing_body");
+    check_file("missing_body");
 }
