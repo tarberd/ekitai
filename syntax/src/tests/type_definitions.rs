@@ -93,12 +93,13 @@ fn test_type_and_function() {
                         Identifier@63..66 "i32"
                 Whitespace@66..67 " "
                 BlockExpression@67..75
-                  OpenBraces@67..68 "{"
-                  Whitespace@68..69 " "
-                  Literal@69..73
-                    Integer@69..73 "0i32"
-                  Whitespace@73..74 " "
-                  CloseBraces@74..75 "}""#]],
+                  StatementList@67..75
+                    OpenBraces@67..68 "{"
+                    Whitespace@68..69 " "
+                    Literal@69..73
+                      Integer@69..73 "0i32"
+                    Whitespace@73..74 " "
+                    CloseBraces@74..75 "}""#]],
     );
 }
 

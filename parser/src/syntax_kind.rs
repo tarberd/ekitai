@@ -36,6 +36,7 @@ pub enum SyntaxKind {
     ThinArrow,
     FatArrow,
     FnKw,
+    LetKw,
     IfKw,
     ElseKw,
     TrueKw,
@@ -68,6 +69,10 @@ pub enum SyntaxKind {
     IfExpression,
     MatchExpression,
 
+    //Statements
+    LetStatement,
+    ExpressionStatement,
+
     // intermidiate nodes
     Name,
     NameReference,
@@ -81,6 +86,7 @@ pub enum SyntaxKind {
     MatchCase,
     MatchCaseList,
     ArgumentList,
+    StatementList,
 
     /// parser error node
     Error,

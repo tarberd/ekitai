@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::cst::CstNode;
+
 use super::*;
 use expect_test::{expect, expect_file, Expect};
 
@@ -22,12 +24,15 @@ fn check_str(actual: &str, expect: Expect) {
     expect.assert_eq(&parse.debug_dump());
 }
 
-fn check_file(path: &Path, test_name: &str) {
+fn check_file<N: CstNode>(path: &Path, parse: &dyn Fn(&str) -> Parse<N>, test_name: &str) {
     let file_name = format!("{}.eki", test_name);
     let path = path.join(file_name);
     let source = std::fs::read_to_string(&path)
         .unwrap_or_else(|_| panic!("File at {:?} should be valid", path));
     let expected_file = path.with_extension("cst");
-    let parse = SourceFile::parse(&source);
+    std::fs::File::open(&expected_file)
+        .map_err(|_| std::fs::File::create(&expected_file).ok())
+        .ok();
+    let parse = parse(&source);
     expect_file![expected_file].assert_eq(&parse.debug_dump());
 }

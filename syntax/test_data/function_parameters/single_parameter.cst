@@ -28,12 +28,13 @@ SourceFile@0..56
             Identifier@29..46 "my_return_type_id"
     Whitespace@46..47 " "
     BlockExpression@47..56
-      OpenBraces@47..48 "{"
-      Whitespace@48..49 " "
-      PathExpression@49..54
-        Path@49..54
-          PathSegment@49..54
-            NameReference@49..54
-              Identifier@49..54 "my_id"
-      Whitespace@54..55 " "
-      CloseBraces@55..56 "}"
+      StatementList@47..56
+        OpenBraces@47..48 "{"
+        Whitespace@48..49 " "
+        PathExpression@49..54
+          Path@49..54
+            PathSegment@49..54
+              NameReference@49..54
+                Identifier@49..54 "my_id"
+        Whitespace@54..55 " "
+        CloseBraces@55..56 "}"
