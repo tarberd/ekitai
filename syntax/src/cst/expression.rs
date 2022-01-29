@@ -8,7 +8,9 @@ mod parenthesis_expression;
 mod path_expression;
 mod prefix_expression;
 
-pub use block_expression::BlockExpression;
+pub use block_expression::{
+    BlockExpression, ExpressionStatement, LetStatement, Statement, StatementList,
+};
 pub use call_expression::{ArgumentList, CallExpression};
 pub use if_expression::IfExpression;
 pub use infix_expression::InfixExpression;

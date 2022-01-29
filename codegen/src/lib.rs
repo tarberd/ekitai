@@ -1132,6 +1132,7 @@ impl<
         let expr = &self.body.expressions[expr_id];
         match expr {
             hir::Expression::Block {
+                statements,
                 trailing_expression,
             } => self.fold_expression(indirect_value, *trailing_expression),
             hir::Expression::If {

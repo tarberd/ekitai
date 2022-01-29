@@ -12,15 +12,16 @@ mod ty;
 mod type_definition;
 
 pub use expression::{
-    BlockExpression, CallExpression, Expression, IfExpression, InfixExpression, Literal, MatchCase,
-    MatchCaseList, MatchExpression, PathExpression, PrefixExpression,
+    BlockExpression, CallExpression, Expression, ExpressionStatement, IfExpression,
+    InfixExpression, LetStatement, Literal, MatchCase, MatchCaseList, MatchExpression,
+    PathExpression, PrefixExpression, Statement, StatementList,
 };
 pub use function_definition::{FunctionDefinition, Parameter, ParameterList};
 pub use module_item::ModuleItem;
 pub use name::Name;
 pub use name_ref::NameReference;
 pub use path::{Path, PathSegment};
-pub use pattern::{BindingPattern, DeconstructorPattern, PatternList, Pattern};
+pub use pattern::{BindingPattern, DeconstructorPattern, Pattern, PatternList};
 pub use source_file::SourceFile;
 pub use token::{
     Asterisk, BinaryOperator, Boolean, Identifier, Integer, Minus, Percent, Plus, Slash,
