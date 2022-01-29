@@ -769,16 +769,50 @@ impl BodyFold {
     }
 
     fn fold_block_expression(self, block: cst::BlockExpression) -> (Self, ExpressionId) {
-        let (mut fold, trailing_expression) = self.fold_expression(
-            block
+        let statement_list = block.statement_list().unwrap();
+        let (fold, statements) = statement_list.statements().fold(
+            (self, Vec::new()),
+            |(fold, mut statements), statement| {
+                let (fold, statement) = fold.fold_statement(statement);
+                statements.push(statement);
+                (fold, statements)
+            },
+        );
+
+        let (mut fold, trailing_expression) = fold.fold_expression(
+            statement_list
                 .tail_expression()
                 .expect("missing tail expression from block"),
         );
         let expr = Expression::Block {
+            statements,
             trailing_expression,
         };
         let id = fold.expressions.alloc(expr);
         (fold, id)
+    }
+
+    fn fold_statement(self, statement: cst::Statement) -> (BodyFold, Statement) {
+        match statement {
+            cst::Statement::Let(let_statement) => {
+                let pattern = let_statement
+                    .pattern()
+                    .expect("missing pattern on let statement");
+                let (fold, pattern_id) = self.fold_pattern(pattern);
+                let expression = let_statement
+                    .expression()
+                    .expect("missing expression on let statement");
+                let (fold, expression_id) = fold.fold_expression(expression);
+                (fold, Statement::Let(pattern_id, expression_id))
+            }
+            cst::Statement::Expression(expr_statement) => {
+                let expression = expr_statement
+                    .expression()
+                    .expect("missing expression on let statement");
+                let (fold, expression_id) = self.fold_expression(expression);
+                (fold, Statement::Expression(expression_id))
+            }
+        }
     }
 
     fn fold_infix_expression(self, infix: cst::InfixExpression) -> (Self, ExpressionId) {
@@ -977,6 +1011,7 @@ pub type ExpressionId = Idx<Expression>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expression {
     Block {
+        statements: Vec<Statement>,
         trailing_expression: ExpressionId,
     },
     If {
@@ -996,6 +1031,12 @@ pub enum Expression {
     Unary(UnaryOperator, ExpressionId),
     Path(Path),
     Literal(Literal),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Statement {
+    Let(PatternId, ExpressionId),
+    Expression(ExpressionId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1343,6 +1384,7 @@ impl<'body> ExpressionScopeFold<'body> {
         self.scope_map.insert(expr_id, scope_id);
         match &self.body.expressions[expr_id] {
             Expression::Block {
+                statements,
                 trailing_expression,
             } => self.fold_expression(*trailing_expression, scope_id),
             Expression::If {
@@ -1418,6 +1460,7 @@ struct InferenceResultFold<'s> {
     pub db: &'s dyn HirDatabase,
     pub function_id: FunctionLocationId,
     pub body: &'s Body,
+    pub resolver: Resolver,
     pub inference_result: InferenceResult,
 }
 
@@ -1427,6 +1470,7 @@ impl<'s> InferenceResultFold<'s> {
             db,
             function_id,
             body,
+            resolver: Resolver::new_root_resolver(db),
             inference_result: InferenceResult {
                 type_of_expression: ArenaMap::default(),
                 type_of_pattern: ArenaMap::default(),
@@ -1446,13 +1490,17 @@ impl<'s> InferenceResultFold<'s> {
 
     fn fold_function_parameters(mut self) -> Self {
         let function = self.db.function_definition_data(self.function_id);
-        let resolver = Resolver::new_for_function(self.db, self.function_id);
-        let ty_resolver = TypeReferenceResolver::new(self.db, &resolver);
-        let parameter_types = function.parameter_types.iter().map(|type_reference| {
-            ty_resolver
-                .resolve_type_reference(type_reference)
-                .expect("missing parameter type")
-        });
+        self.resolver = Resolver::new_for_function(self.db, self.function_id);
+        let ty_resolver = TypeReferenceResolver::new(self.db, &self.resolver);
+        let parameter_types = function
+            .parameter_types
+            .iter()
+            .map(|type_reference| {
+                ty_resolver
+                    .resolve_type_reference(type_reference)
+                    .expect("missing parameter type")
+            })
+            .collect::<Vec<_>>();
 
         self = self
             .body
@@ -1460,17 +1508,17 @@ impl<'s> InferenceResultFold<'s> {
             .iter()
             .zip(parameter_types)
             .fold(self, |fold, (pattern_id, ty)| {
-                fold.fold_pattern(&resolver, *pattern_id, ty)
+                fold.fold_pattern(*pattern_id, ty)
             });
 
         self
     }
 
-    fn fold_pattern(self, resolver: &Resolver, pattern_id: PatternId, expected_type: Type) -> Self {
+    fn fold_pattern(self, pattern_id: PatternId, expected_type: Type) -> Self {
         let (mut fold, ty) = match &self.body.patterns[pattern_id] {
             Pattern::Deconstructor(path, subpatterns) => {
                 let path_resolver =
-                    ValuePathResolver::new(self.db, &self.inference_result, resolver);
+                    ValuePathResolver::new(self.db, &self.inference_result, &self.resolver);
                 let expected_type = path_resolver.resolve_type_for_value_path(path);
 
                 let subpattern_types = match expected_type {
@@ -1484,12 +1532,12 @@ impl<'s> InferenceResultFold<'s> {
                     _ => panic!(),
                 };
 
-                let fold = subpatterns.iter().zip(subpattern_types.into_iter()).fold(
-                    self,
-                    |fold, (pattern_id, pattern_type)| {
-                        fold.fold_pattern(resolver, *pattern_id, pattern_type)
-                    },
-                );
+                let fold = subpatterns
+                    .iter()
+                    .zip(subpattern_types.into_iter())
+                    .fold(self, |fold, (pattern_id, pattern_type)| {
+                        fold.fold_pattern(*pattern_id, pattern_type)
+                    });
 
                 (fold, expected_type)
             }
@@ -1516,8 +1564,14 @@ impl<'s> InferenceResultFold<'s> {
         let expr = &self.body.expressions[expr_id];
         let (mut fold, ty) = match expr {
             Expression::Block {
+                statements,
                 trailing_expression,
-            } => self.fold_expression_type(*trailing_expression),
+            } => {
+                let fold = statements
+                    .iter()
+                    .fold(self, |fold, statement| fold.fold_statement(statement));
+                fold.fold_expression_type(*trailing_expression)
+            }
             Expression::If {
                 condition,
                 then_branch,
@@ -1565,10 +1619,10 @@ impl<'s> InferenceResultFold<'s> {
 
                 let (fold, case_types) = case_list.iter().fold(
                     (fold, Vec::new()),
-                    |(fold, mut case_types), (pattern_id, case)| {
-                        let resolver =
+                    |(mut fold, mut case_types), (pattern_id, case)| {
+                        fold.resolver =
                             Resolver::new_for_expression(fold.db, fold.function_id, expr_id);
-                        let fold = fold.fold_pattern(&resolver, *pattern_id, matchee_type.clone());
+                        let fold = fold.fold_pattern(*pattern_id, matchee_type.clone());
                         let (fold, case_type) = fold.fold_expression_type(*case);
                         case_types.push(case_type);
                         (fold, case_types)
@@ -1635,6 +1689,23 @@ impl<'s> InferenceResultFold<'s> {
             .type_of_expression
             .insert(expr_id, ty.clone());
         (fold, ty)
+    }
+
+    fn fold_statement(self, statement: &'s Statement) -> InferenceResultFold {
+        match statement {
+            Statement::Let(pattern_id, expr_id) => {
+                let (fold, expr_type) = self.fold_expression_type(*expr_id);
+                let fold = fold.fold_pattern(*pattern_id, expr_type);
+                fold
+            }
+            Statement::Expression(expr_id) => {
+                let (mut fold, ty) = self.fold_expression_type(*expr_id);
+                fold.inference_result
+                    .type_of_expression
+                    .insert(*expr_id, ty);
+                fold
+            }
+        }
     }
 }
 

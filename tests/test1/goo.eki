@@ -1,0 +1,20 @@
+type Ntuple {
+    Unit(),
+    Single(i64),
+    Tuple(i64, i64),
+    Triple(i64, i64, i64),
+}
+
+type Option {
+    None(),
+    Some(i64),
+}
+
+fn match_option(input: Option) -> Option {
+    let x = input;
+    x;
+    match input {
+        Option::None() => input,
+        Option::Some(my_integer) => Option::Some(my_integer*my_integer),
+    }
+}
