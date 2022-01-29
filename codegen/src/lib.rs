@@ -1,8 +1,8 @@
 use by_address::ByAddress;
 use hir::{
     BinaryOperator, Body, CallableDefinitionId, ExpressionId, FunctionLocationId, HirDatabase,
-    InferenceResult, Literal, Name, PatternId, Resolver, ScalarType, SourceDatabase, Type,
-    TypeLocationId, UnaryOperator, Upcast, ValueConstructorId,
+    InferenceResult, Literal, Name, PatternId, Resolver, ScalarType, SourceDatabase, Statement,
+    Type, TypeLocationId, UnaryOperator, Upcast, ValueConstructorId,
 };
 use inkwell::{
     attributes::{Attribute, AttributeLoc},
@@ -98,6 +98,7 @@ impl Upcast<dyn hir::HirDatabase> for Database {
 
 impl salsa::Database for Database {}
 
+#[derive(Clone)]
 struct LocalBindingStack<'ink> {
     stack: Vec<Scope<'ink>>,
 }
@@ -126,6 +127,7 @@ impl<'ink> FromIterator<Scope<'ink>> for LocalBindingStack<'ink> {
     }
 }
 
+#[derive(Clone)]
 struct Scope<'ink> {
     scope: Vec<Binding<'ink>>,
 }
@@ -151,11 +153,13 @@ impl<'ink> FromIterator<Binding<'ink>> for Scope<'ink> {
     }
 }
 
+#[derive(Clone)]
 struct Binding<'ink> {
     pub name: Name,
     pub value: BindingValue<'ink>,
 }
 
+#[derive(Clone)]
 struct BindingValue<'ink> {
     pub kind: ValueKind,
     pub value: BasicValueEnum<'ink>,
@@ -356,7 +360,7 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
                     .into_iter()
                     .map(|id| (id, u32::from(id.id.into_raw()) as usize))
                     .collect();
-                let adt_info = TypeInfo::AdtInfo {
+                let adt_info = TypeInfo {
                     tag: tag_type,
                     tag_map,
                 };
@@ -408,11 +412,9 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
 }
 
 #[derive(Clone)]
-enum TypeInfo<'context> {
-    AdtInfo {
-        tag: Option<IntType<'context>>,
-        tag_map: HashMap<ValueConstructorId, usize>,
-    },
+struct TypeInfo<'context> {
+    pub tag: Option<IntType<'context>>,
+    pub tag_map: HashMap<ValueConstructorId, usize>,
 }
 
 // impl<'context> TypeInfo<'context> {
@@ -520,7 +522,12 @@ impl<'db, 'context, 'type_cache> CodeGenFunctionInfoCache<'db, 'context, 'type_c
             (free_integer_registers, Vec::new()),
             |(free_integer_registers, mut param_kinds), param_type| match free_integer_registers {
                 0 => {
-                    param_kinds.push(ValueKind::Indirect);
+                    let bitsize = self.type_cache.bit_size(param_type);
+                    if bitsize <= 64 {
+                        param_kinds.push(ValueKind::Direct)
+                    } else {
+                        param_kinds.push(ValueKind::Indirect);
+                    }
                     (free_integer_registers, param_kinds)
                 }
                 _ => {
@@ -718,10 +725,11 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
     pub(crate) fn build_function_body(&self, function_id: &FunctionLocationId) {
         let llvm_function_value = self.function_value_cache.llvm_function_value(function_id);
         let llvm_body = self.context.append_basic_block(llvm_function_value, "");
-        let builder = self.context.create_builder();
-        builder.position_at_end(llvm_body);
+        let alloca_builder = self.context.create_builder();
+        alloca_builder.position_at_end(llvm_body);
         let body = self.db.body_of_definition(*function_id);
 
+        let function_signature = self.db.callable_definition_signature((*function_id).into());
         let function_info = self.function_info_cache.function_info(function_id);
         let parameter_scope = body
             .parameters
@@ -729,20 +737,40 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
             .zip(
                 function_info
                     .skip_return_param(llvm_function_value.get_param_iter())
-                    .zip(function_info.parameter_kinds),
+                    .zip(function_info.parameter_kinds)
+                    .zip(function_signature.parameter_types),
             )
-            .map(|(pattern_id, (parameter, parameter_kind))| {
+            .map(|(pattern_id, ((parameter, parameter_kind), param_ty))| {
                 let pattern = &body.patterns[*pattern_id];
                 match pattern {
                     hir::Pattern::Deconstructor(_, _) => todo!("Unsing unsuported path pattern"),
                     hir::Pattern::Bind(name) => {
                         parameter.set_name(&name.id);
-                        Binding {
-                            name: name.clone(),
-                            value: BindingValue {
+                        let binding_value = match parameter_kind {
+                            ValueKind::Indirect => BindingValue {
                                 kind: parameter_kind,
                                 value: parameter,
                             },
+                            ValueKind::Direct => {
+                                if self.type_cache.bit_size(&param_ty) <= 64 {
+                                    BindingValue {
+                                        kind: ValueKind::Direct,
+                                        value: parameter,
+                                    }
+                                } else {
+                                    let param_ptr =
+                                        alloca_builder.build_alloca(parameter.get_type(), &name.id);
+                                    alloca_builder.build_store(param_ptr, parameter);
+                                    BindingValue {
+                                        kind: ValueKind::Indirect,
+                                        value: param_ptr.into(),
+                                    }
+                                }
+                            }
+                        };
+                        Binding {
+                            name: name.clone(),
+                            value: binding_value,
                         }
                     }
                 }
@@ -761,10 +789,14 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
             ValueKind::Direct => None,
         };
 
+        let builder = self.context.create_builder();
+        builder.position_at_end(llvm_body);
+
         let return_value = ExpressionLowerer::new(
             self.db,
             &self.context,
             &builder,
+            alloca_builder,
             &self.type_cache,
             &self.function_info_cache,
             &self.function_value_cache,
@@ -1051,6 +1083,7 @@ struct ExpressionLowerer<
     db: &'db dyn CodeGenDatabase,
     context: &'context Context,
     builder: &'builder Builder<'context>,
+    alloca_builder: Builder<'context>,
     type_cache: &'type_cache CodeGenTypeCache<'db, 'context>,
     function_info_cache: &'function_info_cache CodeGenFunctionInfoCache<'db, 'context, 'type_cache>,
     function_value_cache: &'function_value_cache CodeGenFunctionValueCache<
@@ -1089,6 +1122,7 @@ impl<
         db: &'db dyn CodeGenDatabase,
         context: &'context Context,
         builder: &'builder Builder<'context>,
+        alloca_builder: Builder<'context>,
         type_cache: &'type_cache CodeGenTypeCache<'db, 'context>,
         function_info_cache: &'function_info_cache CodeGenFunctionInfoCache<
             'db,
@@ -1109,6 +1143,7 @@ impl<
             db,
             context,
             builder,
+            alloca_builder,
             type_cache,
             function_info_cache,
             function_value_cache,
@@ -1128,13 +1163,59 @@ impl<
         &self,
         indirect_value: Option<PointerValue<'context>>,
         expr_id: ExpressionId,
-    ) -> BasicValueEnum<'context> {
+    ) -> Option<BasicValueEnum<'context>> {
         let expr = &self.body.expressions[expr_id];
         match expr {
             hir::Expression::Block {
                 statements,
                 trailing_expression,
-            } => self.fold_expression(indirect_value, *trailing_expression),
+            } => {
+                for statement in statements {
+                    match statement {
+                        hir::Statement::Let(pattern_id, expr_id) => {
+                            let pattern = &self.body.patterns[*pattern_id];
+                            let expr_ty = &self.inference.type_of_expression[*expr_id];
+                            let bitsize = self.type_cache.bit_size(expr_ty);
+                            let value = if bitsize <= 64 {
+                                let value = self.fold_expression(None, *expr_id).unwrap();
+                                BindingValue {
+                                    kind: ValueKind::Direct,
+                                    value,
+                                }
+                            } else {
+                                let ty = self.type_cache.llvm_type(expr_ty);
+                                let ptr = self.alloca_builder.build_alloca(ty, "");
+                                self.fold_expression(Some(ptr), *expr_id);
+                                BindingValue {
+                                    kind: ValueKind::Indirect,
+                                    value: ptr.as_basic_value_enum(),
+                                }
+                            };
+
+                            let binding = match pattern {
+                                hir::Pattern::Deconstructor(_, _) => todo!(),
+                                hir::Pattern::Bind(name) => Binding {
+                                    name: name.clone(),
+                                    value,
+                                },
+                            };
+                            self.binding_stack
+                                .borrow_mut()
+                                .push(std::iter::once(binding).collect());
+                        }
+                        hir::Statement::Expression(expr_id) => {
+                            self.fold_expression(None, *expr_id);
+                        }
+                    }
+                }
+                let value = self.fold_expression(indirect_value, *trailing_expression);
+                for statement in statements {
+                    if let Statement::Let(_, _) = statement {
+                        self.binding_stack.borrow_mut().pop();
+                    };
+                }
+                value
+            }
             hir::Expression::If {
                 condition,
                 then_branch,
@@ -1171,8 +1252,11 @@ impl<
         condition: &ExpressionId,
         then_branch: &ExpressionId,
         else_branch: &ExpressionId,
-    ) -> BasicValueEnum<'context> {
-        let comparison = self.fold_expression(None, *condition).into_int_value();
+    ) -> Option<BasicValueEnum<'context>> {
+        let comparison = self
+            .fold_expression(None, *condition)
+            .unwrap()
+            .into_int_value();
 
         let then_block = self
             .context
@@ -1197,11 +1281,16 @@ impl<
 
         self.builder.position_at_end(merge_block);
         match indirect_value {
-            Some(ptr) => ptr.into(),
+            Some(_) => None,
             None => {
-                let phi = self.builder.build_phi(then_value.get_type(), "phi");
-                phi.add_incoming(&[(&then_value, then_block), (&else_value, else_block)]);
-                phi.as_basic_value()
+                let phi = self
+                    .builder
+                    .build_phi(then_value.unwrap().get_type(), "phi");
+                phi.add_incoming(&[
+                    (&then_value.unwrap(), then_block),
+                    (&else_value.unwrap(), else_block),
+                ]);
+                Some(phi.as_basic_value())
             }
         }
     }
@@ -1212,35 +1301,41 @@ impl<
         matchee: ExpressionId,
         case_list: &[(PatternId, ExpressionId)],
         resolver: Resolver,
-    ) -> BasicValueEnum<'context> {
-        let matchee_value = self.fold_expression(None, matchee);
+    ) -> Option<BasicValueEnum<'context>> {
+        let matchee_value = self.fold_expression(None, matchee).unwrap();
 
         let matchee_type = &self.inference.type_of_expression[matchee];
-        let TypeInfo::AdtInfo {
+        let TypeInfo {
             tag: tag_type,
             tag_map,
         } = self.type_cache.type_info(matchee_type);
 
         let tag_value = match matchee_type {
-            Type::AbstractDataType(_) => tag_type.map(|_| match matchee_value.get_type() {
-                BasicTypeEnum::PointerType(_) => {
-                    let tag_ptr = self
-                        .builder
-                        .build_struct_gep(matchee_value.into_pointer_value(), 0, "")
-                        .unwrap();
-                    let tag_value = self.builder.build_load(tag_ptr, "");
-                    tag_value.into_int_value()
+            Type::AbstractDataType(_) => match tag_type {
+                Some(_) => {
+                    let value = match matchee_value.get_type() {
+                        BasicTypeEnum::PointerType(_) => {
+                            let tag_ptr = self
+                                .builder
+                                .build_struct_gep(matchee_value.into_pointer_value(), 0, "")
+                                .unwrap();
+                            let tag_value = self.builder.build_load(tag_ptr, "");
+                            tag_value.into_int_value()
+                        }
+                        BasicTypeEnum::StructType(_) => {
+                            let tag_value = self
+                                .builder
+                                .build_extract_value(matchee_value.into_struct_value(), 0, "")
+                                .unwrap()
+                                .into_int_value();
+                            tag_value
+                        }
+                        basic_type => panic!("match of {basic_type:?} not supported"),
+                    };
+                    Some(value)
                 }
-                BasicTypeEnum::StructType(_) => {
-                    let tag_value = self
-                        .builder
-                        .build_extract_value(matchee_value.into_struct_value(), 0, "")
-                        .unwrap()
-                        .into_int_value();
-                    tag_value
-                }
-                basic_type => panic!("match of {basic_type:?} not supported"),
-            }),
+                None => None,
+            },
             Type::FunctionDefinition(_) => todo!("match on function not supported"),
             Type::Scalar(_) => todo!("match on scalar not supported"),
         };
@@ -1439,7 +1534,7 @@ impl<
         indirect_value: Option<PointerValue<'context>>,
         callee: &ExpressionId,
         arguments: &[ExpressionId],
-    ) -> BasicValueEnum<'context> {
+    ) -> Option<BasicValueEnum<'context>> {
         let callee_type = &self.inference.type_of_expression[*callee];
         let callable_definition = match callee_type {
             Type::FunctionDefinition(callable) => callable,
@@ -1508,39 +1603,39 @@ impl<
                 // }
                 todo!()
             }
-            CallableDefinitionId::ValueConstructor(constructor_id) => match indirect_value {
-                Some(struct_ptr) => {
-                    let tag_type = self.context.i32_type();
-                    let tag_ptr = self.builder.build_struct_gep(struct_ptr, 0, "").unwrap();
-
-                    let id = constructor_id.id.into_raw();
-                    let tag = tag_type.const_int(u32::from(id) as u64, false);
-
-                    self.builder.build_store(tag_ptr, tag);
-
-                    struct_ptr.into()
-                }
-                None => {
-                    let (llvm_type, type_info) =
-                        self.type_cache.adt_struct(constructor_id.parrent_id);
-
-                    let constructed_value = llvm_type.const_zero();
-
-                    let TypeInfo::AdtInfo { tag, tag_map } = type_info;
-
-                    let tag_value = tag
-                        .map(|tag_type| tag_type.const_int(tag_map[constructor_id] as u64, true));
-
-                    if let Some(tag_value) = tag_value {
-                        self.builder
-                            .build_insert_value(constructed_value, tag_value, 0, "")
-                            .unwrap()
-                            .as_basic_value_enum()
-                    } else {
-                        panic!()
+            CallableDefinitionId::ValueConstructor(constructor_id) => {
+                let (struct_type, type_info) =
+                    self.type_cache.adt_struct(constructor_id.parrent_id);
+                match indirect_value {
+                    Some(ptr) => {
+                        if let Some(tag_type) = type_info.tag {
+                            let tag_value = type_info.tag_map[constructor_id];
+                            let tag_value = tag_type.const_int(tag_value as u64, false);
+                            let tag_ptr = self.builder.build_struct_gep(ptr, 0, "").unwrap();
+                            self.builder.build_store(tag_ptr, tag_value);
+                        } else {
+                            todo!()
+                        }
+                        None
+                    }
+                    None => {
+                        let constructed_value = struct_type.const_zero();
+                        let TypeInfo { tag, tag_map } = type_info;
+                        let tag_value = tag.map(|tag_type| {
+                            tag_type.const_int(tag_map[constructor_id] as u64, true)
+                        });
+                        let value = if let Some(tag_value) = tag_value {
+                            self.builder
+                                .build_insert_value(constructed_value, tag_value, 0, "")
+                                .unwrap()
+                                .as_basic_value_enum()
+                        } else {
+                            todo!()
+                        };
+                        Some(value)
                     }
                 }
-            },
+            }
         }
     }
 
@@ -1550,9 +1645,9 @@ impl<
         operator: &BinaryOperator,
         lhs: &ExpressionId,
         rhs: &ExpressionId,
-    ) -> BasicValueEnum<'context> {
-        let lhs = self.fold_expression(None, *lhs).into_int_value();
-        let rhs = self.fold_expression(None, *rhs).into_int_value();
+    ) -> Option<BasicValueEnum<'context>> {
+        let lhs = self.fold_expression(None, *lhs).unwrap().into_int_value();
+        let rhs = self.fold_expression(None, *rhs).unwrap().into_int_value();
         let int_value = match operator {
             hir::BinaryOperator::Arithmetic(arithmetic_op) => match arithmetic_op {
                 hir::ArithmeticOperator::Add => self.builder.build_int_add(lhs, rhs, ""),
@@ -1581,7 +1676,14 @@ impl<
                 hir::LogicOperator::Or => self.builder.build_or(lhs, rhs, ""),
             },
         };
-        int_value.into()
+        match indirect_value {
+            Some(ptr) => {
+                self.builder
+                    .build_store(ptr, int_value.as_basic_value_enum());
+                None
+            }
+            None => Some(int_value.into()),
+        }
     }
 
     fn fold_unary_expression(
@@ -1589,9 +1691,9 @@ impl<
         indirect_value: Option<PointerValue<'context>>,
         operator: &UnaryOperator,
         expression: &ExpressionId,
-    ) -> BasicValueEnum<'context> {
-        let expr = self.fold_expression(None, *expression);
-        match operator {
+    ) -> Option<BasicValueEnum<'context>> {
+        let expr = self.fold_expression(None, *expression).unwrap();
+        let value = match operator {
             hir::UnaryOperator::Minus => self
                 .builder
                 .build_int_sub(
@@ -1603,6 +1705,13 @@ impl<
             hir::UnaryOperator::Negation => {
                 self.builder.build_not(expr.into_int_value(), "").into()
             }
+        };
+        match indirect_value {
+            Some(ptr) => {
+                self.builder.build_store(ptr, value);
+                None
+            }
+            None => Some(value),
         }
     }
 
@@ -1611,49 +1720,39 @@ impl<
         indirect_value: Option<PointerValue<'context>>,
         path: &hir::Path,
         resolver: Resolver,
-    ) -> BasicValueEnum<'context> {
+    ) -> Option<BasicValueEnum<'context>> {
         let item = resolver
             .resolve_path_in_value_namespace(self.db.upcast(), path)
             .unwrap();
 
         match item {
             hir::ValueNamespaceItem::Function(_) => todo!(),
-            hir::ValueNamespaceItem::ValueConstructor(ValueConstructorId { id, .. }) => {
-                let struct_ptr = indirect_value.unwrap();
-
-                let tag_type = self.context.i32_type();
-                let tag_ptr = self.builder.build_struct_gep(struct_ptr, 0, "").unwrap();
-
-                let id = id.into_raw();
-                let tag = tag_type.const_int(u32::from(id) as u64, false);
-
-                self.builder.build_store(tag_ptr, tag);
-
-                struct_ptr.into()
+            hir::ValueNamespaceItem::ValueConstructor(_) => todo!(),
+            hir::ValueNamespaceItem::LocalBinding(pattern_id) => {
+                match &self.body.patterns[pattern_id] {
+                    hir::Pattern::Deconstructor(_, _) => todo!(),
+                    hir::Pattern::Bind(name) => match indirect_value {
+                        Some(ptr) => {
+                            let source = self
+                                .binding_stack
+                                .borrow()
+                                .get(name)
+                                .unwrap()
+                                .value
+                                .into_pointer_value();
+                            let _ = self.builder.build_memcpy(
+                                ptr,
+                                4,
+                                source,
+                                4,
+                                self.context.i32_type().const_int(4, false),
+                            );
+                            None
+                        }
+                        None => Some(self.binding_stack.borrow().get(name).unwrap().value),
+                    },
+                }
             }
-            hir::ValueNamespaceItem::LocalBinding(binding) => match &self.body.patterns[binding] {
-                hir::Pattern::Deconstructor(_, _) => todo!(),
-                hir::Pattern::Bind(name) => match indirect_value {
-                    Some(ptr) => {
-                        let source = self
-                            .binding_stack
-                            .borrow()
-                            .get(name)
-                            .unwrap()
-                            .value
-                            .into_pointer_value();
-                        let _ = self.builder.build_memcpy(
-                            ptr,
-                            4,
-                            source,
-                            4,
-                            self.context.i32_type().const_int(4, false),
-                        );
-                        source.into()
-                    }
-                    None => self.binding_stack.borrow().get(name).unwrap().value,
-                },
-            },
         }
     }
 
@@ -1662,9 +1761,9 @@ impl<
         indirect_value: Option<PointerValue<'context>>,
         literal_id: ExpressionId,
         literal: &Literal,
-    ) -> BasicValueEnum<'context> {
+    ) -> Option<BasicValueEnum<'context>> {
         let literal_type = &self.inference.type_of_expression[literal_id];
-        match literal_type {
+        let value = match literal_type {
             Type::AbstractDataType(_) => todo!(),
             Type::FunctionDefinition(_) => todo!(),
             Type::Scalar(ScalarType::Integer(kind)) => {
@@ -1682,12 +1781,19 @@ impl<
                 }
             }
             Type::Scalar(ScalarType::Boolean) => match literal {
-                hir::Literal::Bool(value) => match value {
+                hir::Literal::Bool(bool) => match bool {
                     true => self.context.bool_type().const_all_ones().into(),
                     false => self.context.bool_type().const_zero().into(),
                 },
                 _ => panic!(),
             },
+        };
+        match indirect_value {
+            Some(ptr) => {
+                self.builder.build_store(ptr, value);
+                None
+            }
+            None => Some(value),
         }
     }
 }
