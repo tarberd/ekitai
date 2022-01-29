@@ -1386,7 +1386,29 @@ impl<'body> ExpressionScopeFold<'body> {
             Expression::Block {
                 statements,
                 trailing_expression,
-            } => self.fold_expression(*trailing_expression, scope_id),
+            } => {
+                let (fold, scope_id) =
+                    statements
+                        .iter()
+                        .fold(
+                            (self, scope_id),
+                            |(fold, scope_id), statement| match statement {
+                                Statement::Let(pattern_id, expr_id) => {
+                                    let mut fold = fold.fold_expression(*expr_id, scope_id);
+                                    let entries = fold.fold_pattern_bindings(*pattern_id);
+                                    let scope_id = fold.scopes.alloc(ExpressionScope {
+                                        parent: Some(scope_id),
+                                        entries,
+                                    });
+                                    (fold, scope_id)
+                                }
+                                Statement::Expression(expr_id) => {
+                                    (fold.fold_expression(*expr_id, scope_id), scope_id)
+                                }
+                            },
+                        );
+                fold.fold_expression(*trailing_expression, scope_id)
+            }
             Expression::If {
                 condition,
                 then_branch,
