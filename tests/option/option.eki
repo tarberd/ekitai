@@ -1,0 +1,35 @@
+type Option {
+    None(),
+    Some(i64),
+}
+
+fn get_or_zero(b: Option) -> i64 {
+    match b {
+        Option::Some(x) => x,
+        Option::None() => 0,
+    }
+}
+
+fn from(int: i64) -> Option {
+    Option::Some(int)
+}
+
+fn map_double(opt: Option) -> Option {
+    match opt {
+        Option::Some(x) => {
+            let double = x * x;
+            Option::Some(double)
+        },
+        Option::None() => opt,
+    }
+}
+
+fn multiply(lhs: Option, rhs: Option) -> Option {
+    match lhs {
+        Option::None() => lhs,
+        Option::Some(lhs) => match rhs {
+            Option::None() => rhs,
+            Option::Some(rhs) => Option::Some(lhs * rhs),
+        }
+    }
+}

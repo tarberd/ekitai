@@ -104,7 +104,7 @@ struct LocalBindingStack<'ink> {
 }
 
 impl<'ink> LocalBindingStack<'ink> {
-    pub fn get(&self, name: &Name) -> Option<&BindingValue<'ink>> {
+    pub fn get(&self, name: &Name) -> Option<Value<'ink>> {
         self.stack.iter().rev().find_map(|scope| scope.get(name))
     }
 
@@ -133,11 +133,11 @@ struct Scope<'ink> {
 }
 
 impl<'ink> Scope<'ink> {
-    pub fn get(&self, name: &Name) -> Option<&BindingValue<'ink>> {
+    pub fn get(&self, name: &Name) -> Option<Value<'ink>> {
         self.scope
             .iter()
             .find_map(|binding| match &binding.name == name {
-                true => Some(&binding.value),
+                true => Some(binding.value.clone()),
                 false => None,
             })
     }
@@ -156,13 +156,19 @@ impl<'ink> FromIterator<Binding<'ink>> for Scope<'ink> {
 #[derive(Clone)]
 struct Binding<'ink> {
     pub name: Name,
-    pub value: BindingValue<'ink>,
+    pub value: Value<'ink>,
 }
 
 #[derive(Clone)]
-struct BindingValue<'ink> {
+struct Value<'a> {
     pub kind: ValueKind,
-    pub value: BasicValueEnum<'ink>,
+    pub value: BasicValueEnum<'a>,
+}
+
+impl<'a> Value<'a> {
+    fn new(kind: ValueKind, value: BasicValueEnum<'a>) -> Self {
+        Self { kind, value }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -290,6 +296,10 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
                 self.target_data.get_bit_size(&scalar.as_any_type_enum()) as usize
             }
         }
+    }
+
+    fn target_data(&self) -> &TargetData {
+        &self.target_data
     }
 
     fn adt_struct_info(&self, ty_loc_id: TypeLocationId) -> TypeInfo<'context> {
@@ -725,12 +735,30 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
     pub(crate) fn build_function_body(&self, function_id: &FunctionLocationId) {
         let llvm_function_value = self.function_value_cache.llvm_function_value(function_id);
         let llvm_body = self.context.append_basic_block(llvm_function_value, "");
-        let alloca_builder = self.context.create_builder();
-        alloca_builder.position_at_end(llvm_body);
+        let builder = self.context.create_builder();
+        builder.position_at_end(llvm_body);
         let body = self.db.body_of_definition(*function_id);
-
         let function_signature = self.db.callable_definition_signature((*function_id).into());
         let function_info = self.function_info_cache.function_info(function_id);
+
+        let return_value_ptr = match function_info.return_kind {
+            ValueKind::Indirect => Some(
+                llvm_function_value
+                    .get_first_param()
+                    .unwrap()
+                    .into_pointer_value(),
+            ),
+            ValueKind::Direct => {
+                let ret_type = llvm_function_value.get_type().get_return_type().unwrap();
+                let bit_size = self.type_cache.target_data().get_bit_size(&ret_type);
+                if bit_size <= 64 {
+                    None
+                } else {
+                    Some(builder.build_alloca(ret_type, ""))
+                }
+            }
+        };
+
         let parameter_scope = body
             .parameters
             .iter()
@@ -747,21 +775,21 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
                     hir::Pattern::Bind(name) => {
                         parameter.set_name(&name.id);
                         let binding_value = match parameter_kind {
-                            ValueKind::Indirect => BindingValue {
+                            ValueKind::Indirect => Value {
                                 kind: parameter_kind,
                                 value: parameter,
                             },
                             ValueKind::Direct => {
                                 if self.type_cache.bit_size(&param_ty) <= 64 {
-                                    BindingValue {
+                                    Value {
                                         kind: ValueKind::Direct,
                                         value: parameter,
                                     }
                                 } else {
                                     let param_ptr =
-                                        alloca_builder.build_alloca(parameter.get_type(), &name.id);
-                                    alloca_builder.build_store(param_ptr, parameter);
-                                    BindingValue {
+                                        builder.build_alloca(parameter.get_type(), &name.id);
+                                    builder.build_store(param_ptr, parameter);
+                                    Value {
                                         kind: ValueKind::Indirect,
                                         value: param_ptr.into(),
                                     }
@@ -779,16 +807,6 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
 
         let binding_stack = std::iter::once(parameter_scope).collect();
 
-        let return_value_ptr = match function_info.return_kind {
-            ValueKind::Indirect => Some(
-                llvm_function_value
-                    .get_first_param()
-                    .unwrap()
-                    .into_pointer_value(),
-            ),
-            ValueKind::Direct => None,
-        };
-
         let builder = self.context.create_builder();
         builder.position_at_end(llvm_body);
 
@@ -796,7 +814,6 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
             self.db,
             &self.context,
             &builder,
-            alloca_builder,
             &self.type_cache,
             &self.function_info_cache,
             &self.function_value_cache,
@@ -805,9 +822,19 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
         )
         .fold_expression(return_value_ptr, body.root_expression);
 
-        let return_value = match function_info.return_kind {
-            ValueKind::Indirect => None,
-            ValueKind::Direct => Some(return_value),
+        let return_value = match return_value_ptr {
+            None => {
+                let Value { kind, value } = return_value.unwrap();
+                let value = match kind {
+                    ValueKind::Indirect => builder.build_load(value.into_pointer_value(), ""),
+                    ValueKind::Direct => value,
+                };
+                Some(value)
+            }
+            Some(ptr) => match function_info.return_kind {
+                ValueKind::Indirect => None,
+                ValueKind::Direct => Some(builder.build_load(ptr, "")),
+            },
         };
 
         builder.build_return(return_value.as_ref().map(|val| val as &dyn BasicValue));
@@ -1083,7 +1110,6 @@ struct ExpressionLowerer<
     db: &'db dyn CodeGenDatabase,
     context: &'context Context,
     builder: &'builder Builder<'context>,
-    alloca_builder: Builder<'context>,
     type_cache: &'type_cache CodeGenTypeCache<'db, 'context>,
     function_info_cache: &'function_info_cache CodeGenFunctionInfoCache<'db, 'context, 'type_cache>,
     function_value_cache: &'function_value_cache CodeGenFunctionValueCache<
@@ -1122,7 +1148,6 @@ impl<
         db: &'db dyn CodeGenDatabase,
         context: &'context Context,
         builder: &'builder Builder<'context>,
-        alloca_builder: Builder<'context>,
         type_cache: &'type_cache CodeGenTypeCache<'db, 'context>,
         function_info_cache: &'function_info_cache CodeGenFunctionInfoCache<
             'db,
@@ -1143,7 +1168,6 @@ impl<
             db,
             context,
             builder,
-            alloca_builder,
             type_cache,
             function_info_cache,
             function_value_cache,
@@ -1159,11 +1183,24 @@ impl<
             .llvm_function_value(&self.function_id)
     }
 
+    fn get_alloca_builder(&self) -> Builder<'context> {
+        let builder = self.context.create_builder();
+        let block = self
+            .get_owener_function_value()
+            .get_first_basic_block()
+            .unwrap();
+        match block.get_first_instruction() {
+            Some(instruction) => builder.position_before(&instruction),
+            None => builder.position_at_end(block),
+        };
+        builder
+    }
+
     pub fn fold_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
         expr_id: ExpressionId,
-    ) -> Option<BasicValueEnum<'context>> {
+    ) -> Option<Value<'context>> {
         let expr = &self.body.expressions[expr_id];
         match expr {
             hir::Expression::Block {
@@ -1174,24 +1211,7 @@ impl<
                     match statement {
                         hir::Statement::Let(pattern_id, expr_id) => {
                             let pattern = &self.body.patterns[*pattern_id];
-                            let expr_ty = &self.inference.type_of_expression[*expr_id];
-                            let bitsize = self.type_cache.bit_size(expr_ty);
-                            let value = if bitsize <= 64 {
-                                let value = self.fold_expression(None, *expr_id).unwrap();
-                                BindingValue {
-                                    kind: ValueKind::Direct,
-                                    value,
-                                }
-                            } else {
-                                let ty = self.type_cache.llvm_type(expr_ty);
-                                let ptr = self.alloca_builder.build_alloca(ty, "");
-                                self.fold_expression(Some(ptr), *expr_id);
-                                BindingValue {
-                                    kind: ValueKind::Indirect,
-                                    value: ptr.as_basic_value_enum(),
-                                }
-                            };
-
+                            let value = self.fold_expression(None, *expr_id).unwrap();
                             let binding = match pattern {
                                 hir::Pattern::Deconstructor(_, _) => todo!(),
                                 hir::Pattern::Bind(name) => Binding {
@@ -1252,10 +1272,11 @@ impl<
         condition: &ExpressionId,
         then_branch: &ExpressionId,
         else_branch: &ExpressionId,
-    ) -> Option<BasicValueEnum<'context>> {
+    ) -> Option<Value<'context>> {
         let comparison = self
             .fold_expression(None, *condition)
             .unwrap()
+            .value
             .into_int_value();
 
         let then_block = self
@@ -1273,24 +1294,37 @@ impl<
 
         self.builder.position_at_end(then_block);
         let then_value = self.fold_expression(indirect_value, *then_branch);
+        let then_block = self.builder.get_insert_block().unwrap();
         self.builder.build_unconditional_branch(merge_block);
 
         self.builder.position_at_end(else_block);
         let else_value = self.fold_expression(indirect_value, *else_branch);
+        let else_block = self.builder.get_insert_block().unwrap();
         self.builder.build_unconditional_branch(merge_block);
 
         self.builder.position_at_end(merge_block);
         match indirect_value {
-            Some(_) => None,
+            Some(ptr) => None,
             None => {
-                let phi = self
-                    .builder
-                    .build_phi(then_value.unwrap().get_type(), "phi");
-                phi.add_incoming(&[
-                    (&then_value.unwrap(), then_block),
-                    (&else_value.unwrap(), else_block),
-                ]);
-                Some(phi.as_basic_value())
+                let (
+                    Value {
+                        kind: then_kind,
+                        value: then_value,
+                    },
+                    Value {
+                        kind: else_kind,
+                        value: else_value,
+                    },
+                ) = (then_value.unwrap(), else_value.unwrap());
+                match (then_kind, else_kind) {
+                    (ValueKind::Direct, ValueKind::Direct)
+                    | (ValueKind::Indirect, ValueKind::Indirect) => {
+                        let phi = self.builder.build_phi(then_value.get_type(), "phi");
+                        phi.add_incoming(&[(&then_value, then_block), (&else_value, else_block)]);
+                        Some(Value::new(then_kind, phi.as_basic_value()))
+                    }
+                    _ => panic!(),
+                }
             }
         }
     }
@@ -1301,48 +1335,39 @@ impl<
         matchee: ExpressionId,
         case_list: &[(PatternId, ExpressionId)],
         resolver: Resolver,
-    ) -> Option<BasicValueEnum<'context>> {
-        let matchee_value = self.fold_expression(None, matchee).unwrap();
+    ) -> Option<Value<'context>> {
+        let Value {
+            kind: matchee_kind,
+            value: matchee_value,
+        } = self.fold_expression(None, matchee).unwrap();
 
         let matchee_type = &self.inference.type_of_expression[matchee];
-        let TypeInfo {
-            tag: tag_type,
-            tag_map,
-        } = self.type_cache.type_info(matchee_type);
+        let TypeInfo { tag, tag_map } = self.type_cache.type_info(matchee_type);
 
-        let tag_value = match matchee_type {
-            Type::AbstractDataType(_) => match tag_type {
-                Some(_) => {
-                    let value = match matchee_value.get_type() {
-                        BasicTypeEnum::PointerType(_) => {
-                            let tag_ptr = self
-                                .builder
-                                .build_struct_gep(matchee_value.into_pointer_value(), 0, "")
-                                .unwrap();
-                            let tag_value = self.builder.build_load(tag_ptr, "");
-                            tag_value.into_int_value()
-                        }
-                        BasicTypeEnum::StructType(_) => {
-                            let tag_value = self
-                                .builder
-                                .build_extract_value(matchee_value.into_struct_value(), 0, "")
-                                .unwrap()
-                                .into_int_value();
-                            tag_value
-                        }
-                        basic_type => panic!("match of {basic_type:?} not supported"),
-                    };
-                    Some(value)
+        let tag_value = match matchee_kind {
+            ValueKind::Indirect => {
+                let matchee_ptr = matchee_value.into_pointer_value();
+                match tag {
+                    Some(_) => {
+                        let tag_ptr = self.builder.build_struct_gep(matchee_ptr, 0, "").unwrap();
+                        Some(self.builder.build_load(tag_ptr, "").into_int_value())
+                    }
+                    None => None,
                 }
+            }
+            ValueKind::Direct => match tag {
+                Some(_) => Some(
+                    self.builder
+                        .build_extract_value(matchee_value.into_struct_value(), 0, "")
+                        .unwrap()
+                        .into_int_value(),
+                ),
                 None => None,
             },
-            Type::FunctionDefinition(_) => todo!("match on function not supported"),
-            Type::Scalar(_) => todo!("match on scalar not supported"),
         };
 
-        tag_value.map_or_else(
-            || todo!("tagless"),
-            |tag_value| {
+        match tag_value {
+            Some(tag_value) => {
                 let (patterns_per_tag_value, else_patterns) = case_list
                     .iter()
                     .cloned()
@@ -1387,7 +1412,7 @@ impl<
                 let (switch_cases, cases_and_blocks) = patterns_per_tag_value
                     .into_iter()
                     .map(|(tag, patterns)| {
-                        let tag_value = tag_type.unwrap().const_int(tag as u64, false);
+                        let tag_value = tag_value.get_type().const_int(tag as u64, false);
                         let case_block = self
                             .context
                             .prepend_basic_block(merge_block, format!("br.{}.tag", tag).as_str());
@@ -1413,10 +1438,11 @@ impl<
                                     let case_value =
                                         self.fold_expression(indirect_value, *expression_id);
                                     self.builder.build_unconditional_branch(merge_block);
+                                    let case_block = self.builder.get_insert_block().unwrap();
                                     (case_value, case_block)
                                 } else {
-                                    let inner_value = match matchee_value.get_type() {
-                                        BasicTypeEnum::PointerType(_) => {
+                                    let inner_value = match matchee_kind {
+                                        ValueKind::Indirect => {
                                             let inner_ptr = self
                                                 .builder
                                                 .build_struct_gep(
@@ -1425,9 +1451,12 @@ impl<
                                                     "",
                                                 )
                                                 .unwrap();
-                                            inner_ptr.as_basic_value_enum()
+                                            Value::new(
+                                                ValueKind::Indirect,
+                                                inner_ptr.as_basic_value_enum(),
+                                            )
                                         }
-                                        BasicTypeEnum::StructType(_) => {
+                                        ValueKind::Direct => {
                                             let inner_value = self
                                                 .builder
                                                 .build_extract_value(
@@ -1436,7 +1465,7 @@ impl<
                                                     "",
                                                 )
                                                 .unwrap();
-                                            inner_value
+                                            Value::new(ValueKind::Direct, inner_value)
                                         }
                                         _ => panic!(),
                                     };
@@ -1448,44 +1477,63 @@ impl<
                                             let sub_pattern = &self.body.patterns[*sub_pattern_id];
                                             match sub_pattern {
                                                 hir::Pattern::Bind(name) => {
-                                                    match inner_value.get_type() {
-                                                        BasicTypeEnum::PointerType(_) => {
+                                                    match inner_value.kind {
+                                                        ValueKind::Indirect => {
                                                             let bind_ptr = self
                                                                 .builder
                                                                 .build_struct_gep(
                                                                     inner_value
+                                                                        .value
                                                                         .into_pointer_value(),
                                                                     index as u32,
                                                                     "",
                                                                 )
                                                                 .unwrap();
+                                                            let value = if self
+                                                                .type_cache
+                                                                .target_data()
+                                                                .get_bit_size(
+                                                                    &bind_ptr
+                                                                        .get_type()
+                                                                        .get_element_type(),
+                                                                )
+                                                                <= 64
+                                                            {
+                                                                Value::new(
+                                                                    ValueKind::Direct,
+                                                                    self.builder
+                                                                        .build_load(bind_ptr, ""),
+                                                                )
+                                                            } else {
+                                                                Value::new(
+                                                                    ValueKind::Indirect,
+                                                                    bind_ptr.as_basic_value_enum(),
+                                                                )
+                                                            };
                                                             Binding {
                                                                 name: name.clone(),
-                                                                value: BindingValue {
-                                                                    kind: ValueKind::Indirect,
-                                                                    value: bind_ptr
-                                                                        .as_basic_value_enum(),
-                                                                },
+                                                                value,
                                                             }
                                                         }
-                                                        BasicTypeEnum::StructType(_) => {
+                                                        ValueKind::Direct => {
                                                             let value = self
                                                                 .builder
                                                                 .build_extract_value(
-                                                                    inner_value.into_struct_value(),
+                                                                    inner_value
+                                                                        .value
+                                                                        .into_struct_value(),
                                                                     index as u32,
                                                                     "",
                                                                 )
                                                                 .unwrap();
                                                             Binding {
                                                                 name: name.clone(),
-                                                                value: BindingValue {
+                                                                value: Value {
                                                                     kind: ValueKind::Direct,
                                                                     value,
                                                                 },
                                                             }
                                                         }
-                                                        _ => panic!(),
                                                     }
                                                 }
                                                 hir::Pattern::Deconstructor(_, _) => todo!(),
@@ -1498,6 +1546,7 @@ impl<
                                         self.fold_expression(indirect_value, *expression_id);
                                     self.builder.build_unconditional_branch(merge_block);
                                     self.binding_stack.borrow_mut().pop();
+                                    let case_block = self.builder.get_insert_block().unwrap();
                                     (case_value, case_block)
                                 }
                             }
@@ -1508,25 +1557,30 @@ impl<
 
                 self.builder.position_at_end(merge_block);
                 match indirect_value {
-                    Some(ptr) => ptr.into(),
+                    Some(_) => None,
                     None => {
-                        let phi = self
-                            .builder
-                            .build_phi(case_values.first().unwrap().0.get_type(), "phi");
+                        let first_value = case_values.first().unwrap().0.as_ref().unwrap();
+                        let phi = self.builder.build_phi(first_value.value.get_type(), "phi");
                         phi.add_incoming(
                             case_values
                                 .iter()
                                 .map(|(case_value, case_block)| {
-                                    (case_value as &dyn BasicValue, *case_block)
+                                    (
+                                        &case_value.as_ref().unwrap().value as &dyn BasicValue,
+                                        *case_block,
+                                    )
                                 })
                                 .collect::<Vec<_>>()
                                 .as_slice(),
                         );
-                        phi.as_basic_value()
+
+                        Some(Value::new(first_value.kind, phi.as_basic_value()))
                     }
                 }
-            },
-        )
+            }
+
+            None => todo!(),
+        }
     }
 
     fn fold_call_expression(
@@ -1534,7 +1588,7 @@ impl<
         indirect_value: Option<PointerValue<'context>>,
         callee: &ExpressionId,
         arguments: &[ExpressionId],
-    ) -> Option<BasicValueEnum<'context>> {
+    ) -> Option<Value<'context>> {
         let callee_type = &self.inference.type_of_expression[*callee];
         let callable_definition = match callee_type {
             Type::FunctionDefinition(callable) => callable,
@@ -1613,22 +1667,72 @@ impl<
                             let tag_value = tag_type.const_int(tag_value as u64, false);
                             let tag_ptr = self.builder.build_struct_gep(ptr, 0, "").unwrap();
                             self.builder.build_store(tag_ptr, tag_value);
+
+                            let variant_ptr = self.builder.build_struct_gep(ptr, 1, "").unwrap();
+                            let variant_ptr = self
+                                .builder
+                                .build_bitcast(
+                                    variant_ptr,
+                                    self.type_cache
+                                        .value_constructor_struct(*constructor_id)
+                                        .ptr_type(AddressSpace::Generic),
+                                    "",
+                                )
+                                .into_pointer_value();
+                            let arguments = arguments
+                                .iter()
+                                .map(|argument| self.fold_expression(None, *argument).unwrap());
+                            for (index, argument) in arguments.enumerate() {
+                                let argument_ptr = self
+                                    .builder
+                                    .build_struct_gep(variant_ptr, index as u32, "")
+                                    .unwrap();
+                                let value = match argument.kind {
+                                    ValueKind::Indirect => self
+                                        .builder
+                                        .build_load(argument.value.into_pointer_value(), ""),
+                                    ValueKind::Direct => argument.value,
+                                };
+                                self.builder.build_store(argument_ptr, value);
+                            }
                         } else {
                             todo!()
                         }
                         None
                     }
                     None => {
-                        let constructed_value = struct_type.const_zero();
+                        let type_size = self
+                            .type_cache
+                            .target_data()
+                            .get_bit_size(&struct_type.as_any_type_enum());
+
+                        let value = struct_type.const_zero();
                         let TypeInfo { tag, tag_map } = type_info;
                         let tag_value = tag.map(|tag_type| {
                             tag_type.const_int(tag_map[constructor_id] as u64, true)
                         });
                         let value = if let Some(tag_value) = tag_value {
-                            self.builder
-                                .build_insert_value(constructed_value, tag_value, 0, "")
-                                .unwrap()
-                                .as_basic_value_enum()
+                            if type_size <= 64 {
+                                Value::new(
+                                    ValueKind::Direct,
+                                    self.builder
+                                        .build_insert_value(value, tag_value, 0, "")
+                                        .unwrap()
+                                        .as_basic_value_enum(),
+                                )
+                            } else {
+                                let ptr = self.get_alloca_builder().build_alloca(struct_type, "");
+                                self.builder.build_store(
+                                    ptr,
+                                    ptr.get_type()
+                                        .get_element_type()
+                                        .into_struct_type()
+                                        .const_zero(),
+                                );
+                                let tag_ptr = self.builder.build_struct_gep(ptr, 0, "").unwrap();
+                                self.builder.build_store(tag_ptr, tag_value);
+                                Value::new(ValueKind::Indirect, ptr.as_basic_value_enum())
+                            }
                         } else {
                             todo!()
                         };
@@ -1645,9 +1749,17 @@ impl<
         operator: &BinaryOperator,
         lhs: &ExpressionId,
         rhs: &ExpressionId,
-    ) -> Option<BasicValueEnum<'context>> {
-        let lhs = self.fold_expression(None, *lhs).unwrap().into_int_value();
-        let rhs = self.fold_expression(None, *rhs).unwrap().into_int_value();
+    ) -> Option<Value<'context>> {
+        let lhs = self
+            .fold_expression(None, *lhs)
+            .unwrap()
+            .value
+            .into_int_value();
+        let rhs = self
+            .fold_expression(None, *rhs)
+            .unwrap()
+            .value
+            .into_int_value();
         let int_value = match operator {
             hir::BinaryOperator::Arithmetic(arithmetic_op) => match arithmetic_op {
                 hir::ArithmeticOperator::Add => self.builder.build_int_add(lhs, rhs, ""),
@@ -1682,7 +1794,7 @@ impl<
                     .build_store(ptr, int_value.as_basic_value_enum());
                 None
             }
-            None => Some(int_value.into()),
+            None => Some(Value::new(ValueKind::Direct, int_value.into())),
         }
     }
 
@@ -1691,8 +1803,8 @@ impl<
         indirect_value: Option<PointerValue<'context>>,
         operator: &UnaryOperator,
         expression: &ExpressionId,
-    ) -> Option<BasicValueEnum<'context>> {
-        let expr = self.fold_expression(None, *expression).unwrap();
+    ) -> Option<Value<'context>> {
+        let expr = self.fold_expression(None, *expression).unwrap().value;
         let value = match operator {
             hir::UnaryOperator::Minus => self
                 .builder
@@ -1711,7 +1823,7 @@ impl<
                 self.builder.build_store(ptr, value);
                 None
             }
-            None => Some(value),
+            None => Some(Value::new(ValueKind::Direct, value)),
         }
     }
 
@@ -1720,7 +1832,7 @@ impl<
         indirect_value: Option<PointerValue<'context>>,
         path: &hir::Path,
         resolver: Resolver,
-    ) -> Option<BasicValueEnum<'context>> {
+    ) -> Option<Value<'context>> {
         let item = resolver
             .resolve_path_in_value_namespace(self.db.upcast(), path)
             .unwrap();
@@ -1731,26 +1843,32 @@ impl<
             hir::ValueNamespaceItem::LocalBinding(pattern_id) => {
                 match &self.body.patterns[pattern_id] {
                     hir::Pattern::Deconstructor(_, _) => todo!(),
-                    hir::Pattern::Bind(name) => match indirect_value {
-                        Some(ptr) => {
-                            let source = self
-                                .binding_stack
-                                .borrow()
-                                .get(name)
-                                .unwrap()
-                                .value
-                                .into_pointer_value();
-                            let _ = self.builder.build_memcpy(
-                                ptr,
-                                4,
-                                source,
-                                4,
-                                self.context.i32_type().const_int(4, false),
-                            );
-                            None
+                    hir::Pattern::Bind(name) => {
+                        let value = self
+                            .binding_stack
+                            .borrow()
+                            .get(name)
+                            .expect("missing id {name:?} from scope.");
+                        match indirect_value {
+                            Some(ptr) => {
+                                match value.kind {
+                                    ValueKind::Indirect => {
+                                        let source = value.value.into_pointer_value();
+                                        let _ = self.builder.build_memcpy(
+                                            ptr,
+                                            4,
+                                            source,
+                                            4,
+                                            self.context.i8_type().const_int(16, false),
+                                        );
+                                    }
+                                    ValueKind::Direct => panic!("trying to put direct value into indirect value at bind {name:?}."),
+                                }
+                                None
+                            }
+                            None => Some(value.clone()),
                         }
-                        None => Some(self.binding_stack.borrow().get(name).unwrap().value),
-                    },
+                    }
                 }
             }
         }
@@ -1761,7 +1879,7 @@ impl<
         indirect_value: Option<PointerValue<'context>>,
         literal_id: ExpressionId,
         literal: &Literal,
-    ) -> Option<BasicValueEnum<'context>> {
+    ) -> Option<Value<'context>> {
         let literal_type = &self.inference.type_of_expression[literal_id];
         let value = match literal_type {
             Type::AbstractDataType(_) => todo!(),
@@ -1793,7 +1911,7 @@ impl<
                 self.builder.build_store(ptr, value);
                 None
             }
-            None => Some(value),
+            None => Some(Value::new(ValueKind::Direct, value)),
         }
     }
 }

@@ -1,0 +1,43 @@
+type Bool {
+    True(),
+    False(),
+}
+
+fn bool_not(b: Bool) -> Bool {
+    match b {
+        Bool::True() => Bool::False(),
+        Bool::False() => Bool::True(),
+    }
+}
+
+fn bool_and(a: Bool, b: Bool) -> Bool {
+    match a {
+        Bool::True() => match b {
+            Bool::True() => a,
+            Bool::False() => b,
+        },
+        Bool::False() => a,
+    }
+}
+
+fn bool_or(a: Bool, b: Bool) -> Bool {
+    match a {
+        Bool::False() => b,
+        Bool::True() => a,
+    }
+}
+
+fn into_native(a: Bool) -> bool {
+    match a {
+        Bool::True() => true,
+        Bool::False() => false,
+    }
+}
+
+fn from_native(a: bool) -> Bool {
+    if a {
+        Bool::True()
+    } else {
+        Bool::False()
+    }
+}
