@@ -1,13 +1,13 @@
 
 run: all
-	./build/hello
+	./build/bool
 
 all: out.o
 	cmake -B build
 	cmake --build build
 
-out.ll: goo.eki
-	cargo run goo.eki
+out.ll: bool.eki
+	cargo run bool.eki
 
 out.o: out.ll
 	clang -c out.ll

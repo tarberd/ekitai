@@ -524,6 +524,12 @@ impl From<TypeNamespaceItem> for TypeableDefinition {
     }
 }
 
+impl From<TypeLocationId> for TypeableDefinition {
+    fn from(from: TypeLocationId) -> Self {
+        Self::Type(from)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeableValueDefinitionId {
     Function(FunctionLocationId),

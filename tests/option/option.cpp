@@ -20,15 +20,13 @@ struct Option {
   union {
     Some_body some;
   };
-
-  //   Option(Some_body some) : tag{Tag::Some}, some{some} {}
 };
 
 template <> struct fmt::formatter<Option::Some_body> : formatter<string> {
+  // parse is inherited from formatter<string_view>.
   template <typename FormatContext>
   auto format(Option::Some_body opt, FormatContext &ctx) {
-    string formatted = fmt::format("{}", opt._0);
-    return formatter<string>::format(formatted, ctx);
+    return formatter<string>::format(fmt::format("{}", opt._0), ctx);
   }
 };
 
@@ -39,14 +37,14 @@ template <> struct fmt::formatter<Option> : formatter<string> {
     string variant;
     using Tag = Option::Tag;
     switch (opt.tag) {
-    case Tag::None:
-      variant = fmt::format("None()");
-      break;
     case Tag::Some:
       variant = fmt::format("Some({})", opt.some);
       break;
+    case Tag::None:
+      variant = fmt::format("False()");
+      break;
     default:
-      variant = fmt::format("<unknown>");
+      variant = fmt::format("<unknown:{}>", static_cast<int64_t>(opt.tag));
     }
     variant = fmt::format("Option::{}", variant);
 
@@ -55,11 +53,23 @@ template <> struct fmt::formatter<Option> : formatter<string> {
 };
 
 extern "C" {
-Option match_option(Option input);
+int64_t get_or_zero(Option);
+Option from(int64_t);
+Option map_double(Option);
+Option multiply(Option, Option);
 }
 
 int main() {
-  Option opt{Option::Tag::Some, Option::Some_body{15}};
-  fmt::print("{}\n", match_option(opt));
+  using Tag = Option::Tag;
+  using Some_body = Option::Some_body;
+  Option some15{Tag::Some, Some_body{15}};
+  Option some10{Tag::Some, Some_body{10}};
+  Option none{Tag::None};
+  fmt::print("get_or_zero(Some(15)) : {}\n", get_or_zero(some15));
+  fmt::print("get_or_zero(None): {}\n", get_or_zero(none));
+  fmt::print("from({}): {}\n", 16, from(16));
+  fmt::print("map_double({}): {}\n", some15, map_double(some15));
+  fmt::print("multiply({}, {}): {}\n", some15, some10,
+             multiply(some15, some10));
   return 0;
 }

@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.11)
 
-project(hello VERSION 0.1.0)
+project(option VERSION 0.1.0)
 
 find_package(fmt REQUIRED)
 
 set(target_name ${CMAKE_PROJECT_NAME})
 
-set(sources goo.cpp)
+set(sources option.cpp)
 
 add_executable(${target_name} ${sources})
 
