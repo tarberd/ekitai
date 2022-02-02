@@ -57,6 +57,8 @@ int64_t get_or_zero(Option);
 Option from(int64_t);
 Option map_double(Option);
 Option multiply(Option, Option);
+Option fibonacci(Option);
+int64_t fibonacci_native(int64_t);
 }
 
 int main() {
@@ -64,6 +66,7 @@ int main() {
   using Some_body = Option::Some_body;
   Option some15{Tag::Some, Some_body{15}};
   Option some10{Tag::Some, Some_body{10}};
+  Option some1{Tag::Some, Some_body{6}};
   Option none{Tag::None};
   fmt::print("get_or_zero(Some(15)) : {}\n", get_or_zero(some15));
   fmt::print("get_or_zero(None): {}\n", get_or_zero(none));
@@ -71,5 +74,7 @@ int main() {
   fmt::print("map_double({}): {}\n", some15, map_double(some15));
   fmt::print("multiply({}, {}): {}\n", some15, some10,
              multiply(some15, some10));
+  fmt::print("fibonacci({}): {}\n", some1, fibonacci(some1));
+  fmt::print("fibonacci_native({}): {}\n", 6, fibonacci_native(6));
   return 0;
 }

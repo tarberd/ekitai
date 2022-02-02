@@ -575,6 +575,16 @@ impl FunctionInfo {
             ValueKind::Direct => 0,
         })
     }
+
+    pub(crate) fn get_return_type<'ctx>(
+        &self,
+        function_value: FunctionValue<'ctx>,
+    ) -> BasicTypeEnum<'ctx> {
+        match self.return_kind {
+            ValueKind::Indirect => function_value.get_type().get_param_types()[0],
+            ValueKind::Direct => function_value.get_type().get_return_type().unwrap(),
+        }
+    }
 }
 
 struct CodeGenFunctionValueCache<'db, 'context, 'module, 'type_cache, 'function_info_cache> {
@@ -1596,66 +1606,60 @@ impl<
         };
         match callable_definition {
             CallableDefinitionId::FunctionDefinition(id) => {
-                // let function_info = self.function_info_cache.function_info(id);
-                // let function_value = self.function_value_cache.llvm_function_value(id);
-                // let arguments: Vec<_> = match function_info.return_kind {
-                //     ValueKind::Direct => None,
-                //     ValueKind::Indirect => Some(stack_value.unwrap().as_basic_value_enum()),
-                // }
-                // .into_iter()
-                // .chain(
-                //     arguments
-                //         .iter()
-                //         .zip(
-                //             function_info
-                //                 .skip_return_param(function_value.get_param_iter()),
-                //         )
-                //         .map(|(arg, (_, kind))| {
-                //             let arg_stack_value = match kind {
-                //                 ValueKind::Indirect => {
-                //                     let ty = &self.inference.type_of_expression[*arg];
-                //                     let ty = self.type_cache.llvm_type(ty);
-                //                     let arg_ptr = self.builder.build_alloca(ty, "");
-                //                     Some(arg_ptr)
-                //                 }
-                //                 ValueKind::Direct => stack_value,
-                //             };
-                //             let arg_value = self.fold_expression(arg_stack_value, *arg);
+                let function_info = self.function_info_cache.function_info(id);
+                let function_value = self.function_value_cache.llvm_function_value(id);
 
-                //             match kind {
-                //                 ValueKind::Indirect => {
-                //                     let _ = self.builder.build_memcpy(
-                //                         arg_stack_value.unwrap(),
-                //                         4,
-                //                         arg_value.into_pointer_value(),
-                //                         4,
-                //                         self.context.i32_type().const_int(16, false),
-                //                     );
-                //                 }
-                //                 ValueKind::Direct => todo!(),
-                //             };
-                //             arg_value
-                //         }),
-                // )
-                // .collect();
+                let return_type = function_info.get_return_type(function_value);
 
-                // let call_value = self.builder.build_call(
-                //     function.value,
-                //     arguments
-                //         .into_iter()
-                //         .map(|x| x.into())
-                //         .collect::<Vec<_>>()
-                //         .as_slice(),
-                //     "",
-                // );
+                let arguments = match function_info.return_kind {
+                    ValueKind::Direct => None,
+                    ValueKind::Indirect => match indirect_value {
+                        Some(ptr) => Some(ptr.as_basic_value_enum()),
+                        None => Some(
+                            self.get_alloca_builder()
+                                .build_alloca(return_type, "")
+                                .as_basic_value_enum(),
+                        ),
+                    },
+                }
+                .into_iter()
+                .chain(arguments.iter().zip(function_info.parameter_kinds).map(
+                    |(argument_expr, parameter_kind)| {
+                        let Value {
+                            kind: argument_kind,
+                            value: argument_value,
+                        } = self.fold_expression(None, *argument_expr).unwrap();
+                        let argument_value = match (parameter_kind, argument_kind) {
+                            (ValueKind::Indirect, ValueKind::Indirect)
+                            | (ValueKind::Direct, ValueKind::Direct) => argument_value,
+                            (ValueKind::Direct, ValueKind::Indirect) => self
+                                .builder
+                                .build_load(argument_value.into_pointer_value(), ""),
+                            (ValueKind::Indirect, ValueKind::Direct) => {
+                                let ptr = self
+                                    .get_alloca_builder()
+                                    .build_alloca(argument_value.get_type(), "");
+                                self.builder.build_store(ptr, argument_value);
+                                ptr.as_basic_value_enum()
+                            }
+                        };
+                        argument_value
+                    },
+                ));
 
-                // match function.return_kind {
-                //     ReturnKind::ArgumentPointer => stack_value.unwrap().into(),
-                //     ReturnKind::RegisterValue => {
-                //         call_value.try_as_basic_value().unwrap_left()
-                //     }
-                // }
-                todo!()
+                let call_value = self.builder.build_call(
+                    function_value,
+                    arguments.map(|x| x.into()).collect::<Vec<_>>().as_slice(),
+                    "",
+                );
+
+                match function_info.return_kind {
+                    ValueKind::Indirect => None,
+                    ValueKind::Direct => Some(Value::new(
+                        ValueKind::Direct,
+                        call_value.try_as_basic_value().unwrap_left(),
+                    )),
+                }
             }
             CallableDefinitionId::ValueConstructor(constructor_id) => {
                 let (struct_type, type_info) =
@@ -1667,7 +1671,6 @@ impl<
                             let tag_value = tag_type.const_int(tag_value as u64, false);
                             let tag_ptr = self.builder.build_struct_gep(ptr, 0, "").unwrap();
                             self.builder.build_store(tag_ptr, tag_value);
-
                             let variant_ptr = self.builder.build_struct_gep(ptr, 1, "").unwrap();
                             let variant_ptr = self
                                 .builder
@@ -1713,13 +1716,12 @@ impl<
                         });
                         let value = if let Some(tag_value) = tag_value {
                             if type_size <= 64 {
-                                Value::new(
-                                    ValueKind::Direct,
-                                    self.builder
-                                        .build_insert_value(value, tag_value, 0, "")
-                                        .unwrap()
-                                        .as_basic_value_enum(),
-                                )
+                                let value = self
+                                    .builder
+                                    .build_insert_value(value, tag_value, 0, "")
+                                    .unwrap()
+                                    .as_basic_value_enum();
+                                Value::new(ValueKind::Direct, value)
                             } else {
                                 let ptr = self.get_alloca_builder().build_alloca(struct_type, "");
                                 self.builder.build_store(
@@ -1731,6 +1733,34 @@ impl<
                                 );
                                 let tag_ptr = self.builder.build_struct_gep(ptr, 0, "").unwrap();
                                 self.builder.build_store(tag_ptr, tag_value);
+                                let variant_ptr =
+                                    self.builder.build_struct_gep(ptr, 1, "").unwrap();
+                                let variant_ptr = self
+                                    .builder
+                                    .build_bitcast(
+                                        variant_ptr,
+                                        self.type_cache
+                                            .value_constructor_struct(*constructor_id)
+                                            .ptr_type(AddressSpace::Generic),
+                                        "",
+                                    )
+                                    .into_pointer_value();
+                                let arguments = arguments
+                                    .iter()
+                                    .map(|argument| self.fold_expression(None, *argument).unwrap());
+                                for (index, argument) in arguments.enumerate() {
+                                    let argument_ptr = self
+                                        .builder
+                                        .build_struct_gep(variant_ptr, index as u32, "")
+                                        .unwrap();
+                                    let value = match argument.kind {
+                                        ValueKind::Indirect => self
+                                            .builder
+                                            .build_load(argument.value.into_pointer_value(), ""),
+                                        ValueKind::Direct => argument.value,
+                                    };
+                                    self.builder.build_store(argument_ptr, value);
+                                }
                                 Value::new(ValueKind::Indirect, ptr.as_basic_value_enum())
                             }
                         } else {

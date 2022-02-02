@@ -33,3 +33,26 @@ fn multiply(lhs: Option, rhs: Option) -> Option {
         }
     }
 }
+
+fn fibonacci(num: Option) -> Option {
+    match num {
+        Option::None() => num,
+        Option::Some(x) => {
+            if x < 2 {
+                Option::Some(x)
+            } else {
+                let first = get_or_zero(fibonacci(Option::Some(x-1)));
+                let seccond = get_or_zero(fibonacci(Option::Some(x-2)));
+                Option::Some(first + seccond)
+            }
+        },
+    }
+}
+
+fn fibonacci_native(x: i64) -> i64 {
+    if x < 2 {
+        x
+    } else {
+        fibonacci_native(x - 1 ) + fibonacci_native(x-2)
+    }
+}
