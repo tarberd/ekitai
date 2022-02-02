@@ -15,11 +15,9 @@ struct Bool {
   Tag tag;
 };
 
-
 template <> struct fmt::formatter<Bool> : formatter<string> {
   // parse is inherited from formatter<string_view>.
-  template <typename FormatContext>
-  auto format(Bool opt, FormatContext &ctx) {
+  template <typename FormatContext> auto format(Bool opt, FormatContext &ctx) {
     string variant;
     using Tag = Bool::Tag;
     switch (opt.tag) {
@@ -44,6 +42,7 @@ Bool bool_and(Bool, Bool);
 Bool bool_or(Bool, Bool);
 bool into_native(Bool);
 Bool from_native(bool);
+Bool and_with_native(Bool, Bool);
 }
 
 int main() {
@@ -57,5 +56,9 @@ int main() {
   fmt::print("into_native(False): {}\n", into_native(bfalse));
   fmt::print("from_native(true): {}\n", from_native(true));
   fmt::print("from_native(false): {}\n", from_native(false));
+  fmt::print("and_with_native({}, {}): {}\n", btrue, bfalse,
+             and_with_native(btrue, bfalse));
+  fmt::print("and_with_native({}, {}): {}\n", btrue, btrue,
+             and_with_native(btrue, btrue));
   return 0;
 }
