@@ -45,9 +45,13 @@ fn from_native(a: bool) -> Bool {
 fn and_with_native(a: Bool, b: Bool) -> Bool {
     let a = into_native(a);
     let b = into_native(b);
-    if a && b {
+    if into_native(bool_and(from_native(a),from_native(b))) {
         Bool::True()
     } else {
-        Bool::False()
+        if into_native(Bool::False()) {
+            Bool::False()
+        } else {
+            Bool::False()
+        }
     }
 }
