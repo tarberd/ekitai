@@ -6,41 +6,40 @@
 
 using std::string;
 
-struct Option {
+struct Mat {
   enum class Tag : int64_t {
-    None,
+    Mat,
     Some,
   };
 
-  struct Some_body {
+  struct Mat_body {
     int64_t _0;
   };
 
   Tag tag;
   union {
-    Some_body some;
+    Mat_body some;
   };
 };
 
-template <> struct fmt::formatter<Option::Some_body> : formatter<string> {
+template <> struct fmt::formatter<Mat::Mat_body> : formatter<string> {
   // parse is inherited from formatter<string_view>.
   template <typename FormatContext>
-  auto format(Option::Some_body opt, FormatContext &ctx) {
+  auto format(Mat::Mat_body opt, FormatContext &ctx) {
     return formatter<string>::format(fmt::format("{}", opt._0), ctx);
   }
 };
 
-template <> struct fmt::formatter<Option> : formatter<string> {
+template <> struct fmt::formatter<Mat> : formatter<string> {
   // parse is inherited from formatter<string_view>.
-  template <typename FormatContext>
-  auto format(Option opt, FormatContext &ctx) {
+  template <typename FormatContext> auto format(Mat opt, FormatContext &ctx) {
     string variant;
-    using Tag = Option::Tag;
+    using Tag = Mat::Tag;
     switch (opt.tag) {
     case Tag::Some:
       variant = fmt::format("Some({})", opt.some);
       break;
-    case Tag::None:
+    case Tag::Mat:
       variant = fmt::format("False()");
       break;
     default:
@@ -53,21 +52,21 @@ template <> struct fmt::formatter<Option> : formatter<string> {
 };
 
 extern "C" {
-int64_t get_or_zero(Option);
-Option from(int64_t);
-Option map_double(Option);
-Option multiply(Option, Option);
-Option fibonacci(Option);
+int64_t get_or_zero(Mat);
+Mat from(int64_t);
+Mat map_double(Mat);
+Mat multiply(Mat, Mat);
+Mat fibonacci(Mat);
 int64_t fibonacci_native(int64_t);
 }
 
 int main() {
-  using Tag = Option::Tag;
-  using Some_body = Option::Some_body;
-  Option some15{Tag::Some, Some_body{15}};
-  Option some10{Tag::Some, Some_body{10}};
-  Option some1{Tag::Some, Some_body{6}};
-  Option none{Tag::None};
+  using Tag = Mat::Tag;
+  using Some_body = Mat::Mat_body;
+  Mat some15{Tag::Some, Some_body{15}};
+  Mat some10{Tag::Some, Some_body{10}};
+  Mat some1{Tag::Some, Some_body{6}};
+  Mat none{Tag::Mat};
   fmt::print("get_or_zero(Some(15)) : {}\n", get_or_zero(some15));
   fmt::print("get_or_zero(None): {}\n", get_or_zero(none));
   fmt::print("from({}): {}\n", 16, from(16));

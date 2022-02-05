@@ -1,0 +1,36 @@
+type Vec {
+    Vec(i64, i64),
+}
+
+type Mat {
+    Mat(Vec, Vec),
+}
+
+fn new_mat(x1: i64, y1: i64, x2: i64, y2: i64) -> Mat {
+    Mat::Mat(Vec::Vec(x1, y1), Vec::Vec(x2, y2))
+}
+
+fn multiply_scalar_vec(x: i64, vec: Vec) -> Vec {
+    match vec {
+        Vec::Vec(x1, x2) => Vec::Vec(x * x1, x * x2),
+    }
+}
+
+fn sum_vec(a: Vec, b: Vec) -> Vec {
+    match a {
+        Vec::Vec(a1, a2) => match b {
+            Vec::Vec(b1, b2) => Vec::Vec(a1 + b1, a2 + b2),
+        },
+    }
+}
+
+fn multiply_mat_vec(mat: Mat, vec: Vec) -> Vec {
+    match mat {
+        Mat::Mat(lhs1, lhs2) => match vec {
+            Vec::Vec(x1, x2) => sum_vec(
+                multiply_scalar_vec(x1, lhs1),
+                multiply_scalar_vec(x2, lhs2)
+            ),
+        },
+    }
+}

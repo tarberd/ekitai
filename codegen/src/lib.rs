@@ -159,7 +159,7 @@ struct Binding<'ink> {
     pub value: Value<'ink>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct Value<'a> {
     pub kind: ValueKind,
     pub value: BasicValueEnum<'a>,
@@ -311,72 +311,73 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
     }
 
     fn adt_struct(&self, ty_loc_id: TypeLocationId) -> (StructType<'context>, TypeInfo<'context>) {
-        self.adt_map
-            .borrow_mut()
-            .entry(ty_loc_id)
-            .or_insert_with(|| {
-                let ty_data = self.db.type_definition_data(ty_loc_id);
-                let opaque = self.context.opaque_struct_type(ty_data.name.id.as_str());
+        if let Some(value) = self.adt_map.borrow().get(&ty_loc_id) {
+            return value.clone();
+        };
+        let value = {
+            let ty_data = self.db.type_definition_data(ty_loc_id);
+            let opaque = self.context.opaque_struct_type(ty_data.name.id.as_str());
 
-                let tag_bit_len = {
-                    let variant_count = ty_data.value_constructors.len();
-                    let mut bit_len = 0;
-                    while 1 << bit_len < variant_count {
-                        bit_len += 1;
-                    }
-                    bit_len
-                };
+            let tag_bit_len = {
+                let variant_count = ty_data.value_constructors.len();
+                let mut bit_len = 0;
+                while 1 << bit_len < variant_count {
+                    bit_len += 1;
+                }
+                bit_len
+            };
 
-                let tag_type = match tag_bit_len {
-                    0 => None,
-                    1 => Some(self.context.bool_type()),
-                    2..=8 => Some(self.context.i8_type()),
-                    9..=16 => Some(self.context.i16_type()),
-                    17..=32 => Some(self.context.i32_type()),
-                    33..=64 => Some(self.context.i64_type()),
-                    65..=128 => Some(self.context.i128_type()),
-                    _ => panic!("Tag for ADT too big! {tag_bit_len:?}"),
-                };
+            let tag_type = match tag_bit_len {
+                0 => Some(self.context.i64_type()),
+                1 => Some(self.context.bool_type()),
+                2..=8 => Some(self.context.i8_type()),
+                9..=16 => Some(self.context.i16_type()),
+                17..=32 => Some(self.context.i32_type()),
+                33..=64 => Some(self.context.i64_type()),
+                65..=128 => Some(self.context.i128_type()),
+                _ => panic!("Tag for ADT too big! {tag_bit_len:?}"),
+            };
 
-                let value_constructor_ids = ty_data
-                    .value_constructors
-                    .iter()
-                    .map(|(id, _)| ValueConstructorId {
-                        parrent_id: ty_loc_id,
-                        id,
-                    })
-                    .collect::<Vec<_>>();
+            let value_constructor_ids = ty_data
+                .value_constructors
+                .iter()
+                .map(|(id, _)| ValueConstructorId {
+                    parrent_id: ty_loc_id,
+                    id,
+                })
+                .collect::<Vec<_>>();
 
-                let ty_constructors = value_constructor_ids
-                    .iter()
-                    .cloned()
-                    .map(|id| self.value_constructor_struct(id));
+            let ty_constructors = value_constructor_ids
+                .iter()
+                .cloned()
+                .map(|id| self.value_constructor_struct(id));
 
-                let bigest = ty_constructors
-                    .max_by_key(|struct_type| {
-                        self.target_data
-                            .get_abi_size(&struct_type.as_any_type_enum())
-                    })
-                    .expect("Failed to get memsize of type variant");
+            let bigest = ty_constructors
+                .max_by_key(|struct_type| {
+                    self.target_data
+                        .get_abi_size(&struct_type.as_any_type_enum())
+                })
+                .expect("Failed to get memsize of type variant");
 
-                let field_types = tag_type
-                    .into_iter()
-                    .map(Into::into)
-                    .chain(std::iter::once(bigest.into()))
-                    .collect::<Vec<_>>();
+            let field_types = tag_type
+                .into_iter()
+                .map(Into::into)
+                .chain(std::iter::once(bigest.into()))
+                .collect::<Vec<_>>();
 
-                opaque.set_body(field_types.as_slice(), false);
-                let tag_map = value_constructor_ids
-                    .into_iter()
-                    .map(|id| (id, u32::from(id.id.into_raw()) as usize))
-                    .collect();
-                let adt_info = TypeInfo {
-                    tag: tag_type,
-                    tag_map,
-                };
-                (opaque, adt_info)
-            })
-            .clone()
+            opaque.set_body(field_types.as_slice(), false);
+            let tag_map = value_constructor_ids
+                .into_iter()
+                .map(|id| (id, u32::from(id.id.into_raw()) as usize))
+                .collect();
+            let adt_info = TypeInfo {
+                tag: tag_type,
+                tag_map,
+            };
+            (opaque, adt_info)
+        };
+        self.adt_map.borrow_mut().insert(ty_loc_id, value.clone());
+        value
     }
 
     fn value_constructor_struct(&self, constructor_id: ValueConstructorId) -> StructType<'context> {
@@ -426,32 +427,6 @@ struct TypeInfo<'context> {
     pub tag: Option<IntType<'context>>,
     pub tag_map: HashMap<ValueConstructorId, usize>,
 }
-
-// impl<'context> TypeInfo<'context> {
-//     fn adt_tag_value(
-//         &self,
-//         builder: &Builder<'context>,
-//         matchee_value: BasicValueEnum<'context>,
-//     ) -> Option<BasicValueEnum<'context>> {
-//         match self.tag_index {
-//             Some((offset, tag_type)) => match matchee_value {
-//                 BasicValueEnum::ArrayValue(_) => todo!(),
-//                 BasicValueEnum::IntValue(_) => todo!(),
-//                 BasicValueEnum::FloatValue(_) => todo!(),
-//                 BasicValueEnum::PointerValue(pointer) => unsafe {
-//                     Some(
-//                         builder
-//                             .build_in_bounds_gep(pointer, &[], "")
-//                             .as_basic_value_enum(),
-//                     )
-//                 },
-//                 BasicValueEnum::StructValue(struct_value) => todo!(),
-//                 BasicValueEnum::VectorValue(_) => todo!(),
-//             },
-//             None => todo!(),
-//         }
-//     }
-// }
 
 struct CodeGenFunctionInfoCache<'db, 'context, 'type_cache> {
     db: &'db dyn CodeGenDatabase,
@@ -1611,41 +1586,50 @@ impl<
 
                 let return_type = function_info.get_return_type(function_value);
 
-                let arguments = match function_info.return_kind {
+                let indirect_function_return = match function_info.return_kind {
                     ValueKind::Direct => None,
                     ValueKind::Indirect => match indirect_value {
                         Some(ptr) => Some(ptr.as_basic_value_enum()),
                         None => Some(
                             self.get_alloca_builder()
-                                .build_alloca(return_type, "")
+                                .build_alloca(
+                                    BasicTypeEnum::try_from(
+                                        return_type.into_pointer_type().get_element_type(),
+                                    )
+                                    .unwrap(),
+                                    "",
+                                )
                                 .as_basic_value_enum(),
                         ),
                     },
-                }
-                .into_iter()
-                .chain(arguments.iter().zip(function_info.parameter_kinds).map(
-                    |(argument_expr, parameter_kind)| {
-                        let Value {
-                            kind: argument_kind,
-                            value: argument_value,
-                        } = self.fold_expression(None, *argument_expr).unwrap();
-                        let argument_value = match (parameter_kind, argument_kind) {
-                            (ValueKind::Indirect, ValueKind::Indirect)
-                            | (ValueKind::Direct, ValueKind::Direct) => argument_value,
-                            (ValueKind::Direct, ValueKind::Indirect) => self
-                                .builder
-                                .build_load(argument_value.into_pointer_value(), ""),
-                            (ValueKind::Indirect, ValueKind::Direct) => {
-                                let ptr = self
-                                    .get_alloca_builder()
-                                    .build_alloca(argument_value.get_type(), "");
-                                self.builder.build_store(ptr, argument_value);
-                                ptr.as_basic_value_enum()
-                            }
-                        };
-                        argument_value
-                    },
-                ));
+                };
+
+                let arguments = indirect_function_return.into_iter().chain(
+                    arguments
+                        .iter()
+                        .zip(function_info.parameter_kinds.iter())
+                        .map(|(argument_expr, parameter_kind)| {
+                            let Value {
+                                kind: argument_kind,
+                                value: argument_value,
+                            } = self.fold_expression(None, *argument_expr).unwrap();
+                            let argument_value = match (parameter_kind, argument_kind) {
+                                (ValueKind::Indirect, ValueKind::Indirect)
+                                | (ValueKind::Direct, ValueKind::Direct) => argument_value,
+                                (ValueKind::Direct, ValueKind::Indirect) => self
+                                    .builder
+                                    .build_load(argument_value.into_pointer_value(), ""),
+                                (ValueKind::Indirect, ValueKind::Direct) => {
+                                    let ptr = self
+                                        .get_alloca_builder()
+                                        .build_alloca(argument_value.get_type(), "");
+                                    self.builder.build_store(ptr, argument_value);
+                                    ptr.as_basic_value_enum()
+                                }
+                            };
+                            argument_value
+                        }),
+                );
 
                 let call_value = self.builder.build_call(
                     function_value,
@@ -1653,12 +1637,18 @@ impl<
                     "",
                 );
 
-                match function_info.return_kind {
-                    ValueKind::Indirect => None,
-                    ValueKind::Direct => Some(Value::new(
-                        ValueKind::Direct,
-                        call_value.try_as_basic_value().unwrap_left(),
-                    )),
+                match indirect_value {
+                    Some(_) => None,
+                    None => match function_info.return_kind {
+                        ValueKind::Indirect => Some(Value::new(
+                            ValueKind::Indirect,
+                            indirect_function_return.unwrap(),
+                        )),
+                        ValueKind::Direct => Some(Value::new(
+                            ValueKind::Direct,
+                            call_value.try_as_basic_value().unwrap_left(),
+                        )),
+                    },
                 }
             }
             CallableDefinitionId::ValueConstructor(constructor_id) => {
