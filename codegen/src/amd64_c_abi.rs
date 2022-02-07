@@ -53,6 +53,7 @@ fn classify(
             }
         }
         Type::FunctionDefinition(_) => todo!(),
+        Type::Pointer(_) => todo!(),
     }
 }
 

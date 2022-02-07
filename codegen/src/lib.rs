@@ -13,14 +13,13 @@ use inkwell::{
     targets::{
         CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine, TargetTriple,
     },
-    types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum, FunctionType, IntType, StructType},
+    types::{AnyType, BasicType, BasicTypeEnum, FunctionType, IntType, StructType},
     values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, IntPredicate, OptimizationLevel,
 };
 use std::{
-    borrow::BorrowMut,
     cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, HashMap},
     fmt::Display,
     iter::FromIterator,
     sync::Arc,
@@ -273,6 +272,11 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
             Type::AbstractDataType(ty_loc_id) => self.adt_struct_type(*ty_loc_id).into(),
             Type::FunctionDefinition(_) => todo!(),
             Type::Scalar(scalar) => self.scalar_type(scalar),
+            Type::Pointer(inner) => {
+                let inner = self.llvm_type(inner);
+                let ptr_type = inner.ptr_type(AddressSpace::Generic);
+                ptr_type.as_basic_type_enum()
+            }
         }
     }
 
@@ -281,21 +285,13 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
             Type::AbstractDataType(ty_loc_id) => self.adt_struct_info(*ty_loc_id),
             Type::FunctionDefinition(_) => todo!(),
             Type::Scalar(_) => todo!(),
+            Type::Pointer(_) => todo!(),
         }
     }
 
     fn bit_size(&self, ty: &Type) -> usize {
-        match ty {
-            Type::AbstractDataType(type_id) => {
-                let struct_ir = self.adt_struct_type(*type_id);
-                self.target_data.get_bit_size(&struct_ir.as_any_type_enum()) as usize
-            }
-            Type::FunctionDefinition(_) => todo!(),
-            Type::Scalar(scalar) => {
-                let scalar = self.scalar_type(scalar);
-                self.target_data.get_bit_size(&scalar.as_any_type_enum()) as usize
-            }
-        }
+        let llvm_type = self.llvm_type(ty);
+        self.target_data.get_bit_size(&llvm_type.as_any_type_enum()) as usize
     }
 
     fn target_data(&self) -> &TargetData {
@@ -314,68 +310,68 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
         if let Some(value) = self.adt_map.borrow().get(&ty_loc_id) {
             return value.clone();
         };
-        let value = {
-            let ty_data = self.db.type_definition_data(ty_loc_id);
-            let opaque = self.context.opaque_struct_type(ty_data.name.id.as_str());
+        let ty_data = self.db.type_definition_data(ty_loc_id);
+        let opaque = self.context.opaque_struct_type(ty_data.name.id.as_str());
+        self.adt_map
+            .borrow_mut()
+            .insert(ty_loc_id, (opaque, TypeInfo::default()));
 
-            let tag_bit_len = {
-                let variant_count = ty_data.value_constructors.len();
-                let mut bit_len = 0;
-                while 1 << bit_len < variant_count {
-                    bit_len += 1;
-                }
-                bit_len
-            };
-
-            let tag_type = match tag_bit_len {
-                0 => Some(self.context.i64_type()),
-                1 => Some(self.context.bool_type()),
-                2..=8 => Some(self.context.i8_type()),
-                9..=16 => Some(self.context.i16_type()),
-                17..=32 => Some(self.context.i32_type()),
-                33..=64 => Some(self.context.i64_type()),
-                65..=128 => Some(self.context.i128_type()),
-                _ => panic!("Tag for ADT too big! {tag_bit_len:?}"),
-            };
-
-            let value_constructor_ids = ty_data
-                .value_constructors
-                .iter()
-                .map(|(id, _)| ValueConstructorId {
-                    parrent_id: ty_loc_id,
-                    id,
-                })
-                .collect::<Vec<_>>();
-
-            let ty_constructors = value_constructor_ids
-                .iter()
-                .cloned()
-                .map(|id| self.value_constructor_struct(id));
-
-            let bigest = ty_constructors
-                .max_by_key(|struct_type| {
-                    self.target_data
-                        .get_abi_size(&struct_type.as_any_type_enum())
-                })
-                .expect("Failed to get memsize of type variant");
-
-            let field_types = tag_type
-                .into_iter()
-                .map(Into::into)
-                .chain(std::iter::once(bigest.into()))
-                .collect::<Vec<_>>();
-
-            opaque.set_body(field_types.as_slice(), false);
-            let tag_map = value_constructor_ids
-                .into_iter()
-                .map(|id| (id, u32::from(id.id.into_raw()) as usize))
-                .collect();
-            let adt_info = TypeInfo {
-                tag: tag_type,
-                tag_map,
-            };
-            (opaque, adt_info)
+        let tag_bit_len = {
+            let variant_count = ty_data.value_constructors.len();
+            let mut bit_len = 0;
+            while 1 << bit_len < variant_count {
+                bit_len += 1;
+            }
+            bit_len
         };
+
+        let tag_type = match tag_bit_len {
+            0 => Some(self.context.i64_type()),
+            1 => Some(self.context.i64_type()),
+            2..=8 => Some(self.context.i64_type()),
+            9..=16 => Some(self.context.i64_type()),
+            17..=32 => Some(self.context.i64_type()),
+            33..=64 => Some(self.context.i64_type()),
+            _ => panic!("Tag for ADT too big! {tag_bit_len:?}"),
+        };
+
+        let value_constructor_ids = ty_data
+            .value_constructors
+            .iter()
+            .map(|(id, _)| ValueConstructorId {
+                parrent_id: ty_loc_id,
+                id,
+            })
+            .collect::<Vec<_>>();
+
+        let ty_constructors = value_constructor_ids
+            .iter()
+            .cloned()
+            .map(|id| self.value_constructor_struct(id));
+
+        let bigest = ty_constructors
+            .max_by_key(|struct_type| {
+                self.target_data
+                    .get_abi_size(&struct_type.as_any_type_enum())
+            })
+            .expect("Failed to get memsize of type variant");
+
+        let field_types = tag_type
+            .into_iter()
+            .map(Into::into)
+            .chain(std::iter::once(bigest.into()))
+            .collect::<Vec<_>>();
+
+        opaque.set_body(field_types.as_slice(), false);
+        let tag_map = value_constructor_ids
+            .into_iter()
+            .map(|id| (id, u32::from(id.id.into_raw()) as usize))
+            .collect();
+        let adt_info = TypeInfo {
+            tag: tag_type,
+            tag_map,
+        };
+        let value = (opaque, adt_info);
         self.adt_map.borrow_mut().insert(ty_loc_id, value.clone());
         value
     }
@@ -389,11 +385,7 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
         let struct_data = constructor
             .parameter_types
             .iter()
-            .map(|ty| match ty {
-                Type::AbstractDataType(id) => self.adt_struct_type(*id).into(),
-                Type::FunctionDefinition(_) => todo!(),
-                Type::Scalar(scalar) => self.scalar_type(scalar),
-            })
+            .map(|ty| self.llvm_type(ty))
             .collect::<Vec<_>>();
 
         let ty_data = self.db.type_definition_data(constructor_id.parrent_id);
@@ -422,7 +414,7 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Default, Clone)]
 struct TypeInfo<'context> {
     pub tag: Option<IntType<'context>>,
     pub tag_map: HashMap<ValueConstructorId, usize>,
@@ -1452,7 +1444,6 @@ impl<
                                                 .unwrap();
                                             Value::new(ValueKind::Direct, inner_value)
                                         }
-                                        _ => panic!(),
                                     };
 
                                     let scope = sub_patterns
@@ -1925,6 +1916,7 @@ impl<
                 },
                 _ => panic!(),
             },
+            Type::Pointer(_) => todo!(),
         };
         match indirect_value {
             Some(ptr) => {

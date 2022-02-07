@@ -22,6 +22,7 @@ pub enum SyntaxKind {
     Plus,
     Minus,
     Asterisk,
+    Ampersand,
     Slash,
     Percent,
     Exclamation,
@@ -48,6 +49,7 @@ pub enum SyntaxKind {
 
     // Types
     PathType,
+    PointerType,
 
     // Patterns
     DeconstructorPattern,
