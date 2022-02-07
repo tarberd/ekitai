@@ -279,12 +279,16 @@ fn parse_let_statement<S: TokenSource>(p: &mut Parser<S>, mark: Marker) {
 
 enum PrefixOp {
     Neg,
+    Ref,
+    Deref,
 }
 
 impl PrefixOp {
     fn binding_power(&self) -> ((), u8) {
         match self {
             Self::Neg => ((), 5),
+            Self::Ref => ((), 5),
+            Self::Deref => ((), 5),
         }
     }
 }
@@ -395,7 +399,7 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
         literal(p)
     } else if p.at(Identifier) {
         path_expression(p)
-    } else if p.at(Minus) || p.at(Exclamation) {
+    } else if p.at(Minus) || p.at(Exclamation) || p.at(Asterisk) || p.at(Ampersand) {
         prefix_expression(p)
     } else if p.at(OpenParenthesis) {
         parenthesis_expression(p)

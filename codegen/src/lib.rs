@@ -1817,7 +1817,7 @@ impl<
     ) -> Option<Value<'context>> {
         let expr = self.fold_expression(None, *expression).unwrap().value;
         let value = match operator {
-            hir::UnaryOperator::Minus => self
+            UnaryOperator::Minus => self
                 .builder
                 .build_int_sub(
                     expr.get_type().into_int_type().const_zero(),
@@ -1825,9 +1825,11 @@ impl<
                     "",
                 )
                 .into(),
-            hir::UnaryOperator::Negation => {
+            UnaryOperator::Negation => {
                 self.builder.build_not(expr.into_int_value(), "").into()
             }
+            UnaryOperator::Reference => todo!(),
+            UnaryOperator::Dereference => todo!(),
         };
         match indirect_value {
             Some(ptr) => {

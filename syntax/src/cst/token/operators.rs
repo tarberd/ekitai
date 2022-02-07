@@ -434,6 +434,42 @@ impl std::convert::TryFrom<SyntaxToken> for LessEquals {
 }
 
 #[derive(Debug)]
+pub struct Ampersand(SyntaxToken);
+
+impl CstToken for Ampersand {
+    fn as_syntax_token(&self) -> &SyntaxToken {
+        &self.0
+    }
+}
+
+impl Ampersand {
+    pub(crate) const fn syntax_kind() -> SyntaxKind {
+        SyntaxKind::Ampersand
+    }
+
+    pub fn text(&self) -> &str {
+        self.as_syntax_token().text()
+    }
+}
+
+impl std::fmt::Display for Ampersand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self.as_syntax_token(), f)
+    }
+}
+
+impl std::convert::TryFrom<SyntaxToken> for Ampersand {
+    type Error = SyntaxToAstError;
+
+    fn try_from(syntax_node: SyntaxToken) -> Result<Self, Self::Error> {
+        match syntax_node.kind() {
+            x if x == Self::syntax_kind() => Ok(Self(syntax_node)),
+            other => Err(Self::Error::new(Self::syntax_kind(), other)),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct DoubleAmpersand(SyntaxToken);
 
 impl CstToken for DoubleAmpersand {
@@ -607,6 +643,8 @@ impl std::convert::TryFrom<SyntaxToken> for BinaryOperator {
 pub enum UnaryOperator {
     Minus(Minus),
     Exclamation(Exclamation),
+    Asterisk(Asterisk),
+    Ampersand(Ampersand),
 }
 
 impl CstToken for UnaryOperator {
@@ -614,6 +652,8 @@ impl CstToken for UnaryOperator {
         match self {
             Self::Minus(tok) => tok.as_syntax_token(),
             Self::Exclamation(tok) => tok.as_syntax_token(),
+            Self::Asterisk(tok) => tok.as_syntax_token(),
+            Self::Ampersand(tok) => tok.as_syntax_token(),
         }
     }
 }

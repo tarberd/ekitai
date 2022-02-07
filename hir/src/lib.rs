@@ -883,6 +883,8 @@ impl BodyFold {
         {
             cst::UnaryOperator::Minus(_) => UnaryOperator::Minus,
             cst::UnaryOperator::Exclamation(_) => UnaryOperator::Negation,
+            cst::UnaryOperator::Asterisk(_) => UnaryOperator::Dereference,
+            cst::UnaryOperator::Ampersand(_) => UnaryOperator::Reference,
         };
 
         let unary_expr = Expression::Unary(op, inner);
@@ -1090,6 +1092,8 @@ pub enum Ordering {
 pub enum UnaryOperator {
     Minus,
     Negation,
+    Reference,
+    Dereference,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1646,6 +1650,17 @@ impl<'s> InferenceResultFold<'s> {
             Expression::Unary(op, expr) => match op {
                 UnaryOperator::Minus => self.fold_expression_type(*expr),
                 UnaryOperator::Negation => self.fold_expression_type(*expr),
+                UnaryOperator::Reference => {
+                    let (fold, inner) = self.fold_expression_type(*expr);
+                    (fold, Type::Pointer(Box::new(inner)))
+                }
+                UnaryOperator::Dereference => {
+                    let (fold, inner) = self.fold_expression_type(*expr);
+                    match inner {
+                        Type::Pointer(inner) => (fold, *inner),
+                        ty => panic!("Can not dereference type: {:?}", ty),
+                    }
+                }
             },
             Expression::Match { matchee, case_list } => {
                 let (fold, matchee_type) = self.fold_expression_type(*matchee);
@@ -1764,7 +1779,7 @@ impl<'d> TypeReferenceResolver<'d> {
             TypeReference::Pointer(inner) => {
                 let inner = self.resolve_type_reference(inner)?;
                 Type::Pointer(Box::new(inner))
-            },
+            }
         };
         Some(ty)
     }
