@@ -817,3 +817,52 @@ fn match_expression_multiple_case() {
                 CloseBraces@105..106 "}""#]],
     );
 }
+
+#[test]
+fn match_deref() {
+    check_str(
+        "*some_ptr",
+        expect![[r#"
+            PrefixExpression@0..9
+              Asterisk@0..1 "*"
+              PathExpression@1..9
+                Path@1..9
+                  PathSegment@1..9
+                    NameReference@1..9
+                      Identifier@1..9 "some_ptr""#]],
+    );
+}
+
+#[test]
+fn match_ref() {
+    check_str(
+        "&some_ptr",
+        expect![[r#"
+            PrefixExpression@0..9
+              Ampersand@0..1 "&"
+              PathExpression@1..9
+                Path@1..9
+                  PathSegment@1..9
+                    NameReference@1..9
+                      Identifier@1..9 "some_ptr""#]],
+    );
+}
+
+#[test]
+fn match_ref_deref_ref() {
+    check_str(
+        "&*&some_ptr",
+        expect![[r#"
+            PrefixExpression@0..11
+              Ampersand@0..1 "&"
+              PrefixExpression@1..11
+                Asterisk@1..2 "*"
+                PrefixExpression@2..11
+                  Ampersand@2..3 "&"
+                  PathExpression@3..11
+                    Path@3..11
+                      PathSegment@3..11
+                        NameReference@3..11
+                          Identifier@3..11 "some_ptr""#]],
+    );
+}
