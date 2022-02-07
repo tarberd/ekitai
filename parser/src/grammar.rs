@@ -199,6 +199,12 @@ fn parse_path<S: TokenSource>(p: &mut Parser<S>) {
 }
 
 fn parse_type<S: TokenSource>(p: &mut Parser<S>) {
+    if p.at(Asterisk) {
+        let m = p.start();
+        p.bump();
+        parse_type(p);
+        m.complete(p, PointerType);
+    }
     if p.at(Identifier) {
         parse_path_type(p)
     }

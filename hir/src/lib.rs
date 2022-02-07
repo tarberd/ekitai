@@ -536,10 +536,11 @@ pub enum TypeableValueDefinitionId {
     ValueConstructor(ValueConstructorId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     AbstractDataType(TypeLocationId),
     FunctionDefinition(CallableDefinitionId),
+    Pointer(Box<Type>),
     Scalar(ScalarType),
 }
 
@@ -1145,12 +1146,16 @@ pub type TypeReferenceId = Idx<TypeReference>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeReference {
     Path(Path),
+    Pointer(Box<TypeReference>),
 }
 
 impl TypeReference {
     fn lower(ty: cst::Type) -> Self {
         match ty {
             cst::Type::PathType(path_ty) => Self::Path(Path::lower(path_ty.path().unwrap())),
+            cst::Type::PointerType(ptr_ty) => {
+                Self::Pointer(Box::new(Self::lower(ptr_ty.inner_type().unwrap())))
+            }
         }
     }
 }
@@ -1756,6 +1761,10 @@ impl<'d> TypeReferenceResolver<'d> {
 
                 self.db.type_of_definition(typed_item.into())
             }
+            TypeReference::Pointer(inner) => {
+                let inner = self.resolve_type_reference(inner)?;
+                Type::Pointer(Box::new(inner))
+            },
         };
         Some(ty)
     }

@@ -32,6 +32,8 @@ pub enum TokenKind {
     Minus,
     #[token("*")]
     Asterisk,
+    #[token("&")]
+    Ampersand,
     #[token("/")]
     Slash,
     #[token("%")]
@@ -201,6 +203,11 @@ mod tests {
     #[test]
     fn lex_asterisk() {
         check("*", TokenKind::Asterisk);
+    }
+
+    #[test]
+    fn lex_ampersand() {
+        check("&", TokenKind::Ampersand);
     }
 
     #[test]

@@ -1,0 +1,34 @@
+SourceFile@0..41
+  TypeDefinition@0..41
+    TypeKw@0..4 "type"
+    Whitespace@4..5 " "
+    Name@5..9
+      Identifier@5..9 "List"
+    Whitespace@9..10 " "
+    ValueConstructorList@10..41
+      OpenBraces@10..11 "{"
+      Whitespace@11..16 "\n    "
+      ValueConstructor@16..21
+        Name@16..19
+          Identifier@16..19 "Nil"
+        ConstructorParameterList@19..21
+          OpenParenthesis@19..20 "("
+          CloseParenthesis@20..21 ")"
+      Comma@21..22 ","
+      Whitespace@22..27 "\n    "
+      ValueConstructor@27..38
+        Name@27..31
+          Identifier@27..31 "Cons"
+        ConstructorParameterList@31..38
+          OpenParenthesis@31..32 "("
+          PointerType@32..37
+            Asterisk@32..33 "*"
+            PathType@33..37
+              Path@33..37
+                PathSegment@33..37
+                  NameReference@33..37
+                    Identifier@33..37 "List"
+          CloseParenthesis@37..38 ")"
+      Comma@38..39 ","
+      Whitespace@39..40 "\n"
+      CloseBraces@40..41 "}"

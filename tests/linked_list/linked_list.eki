@@ -1,0 +1,8 @@
+type List {
+    Nil(),
+    Cons(i64, *List)
+}
+
+fn new_empty() -> List {
+    List::Nil()
+}

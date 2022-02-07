@@ -1,0 +1,27 @@
+SourceFile@0..34
+  TypeDefinition@0..34
+    TypeKw@0..4 "type"
+    Whitespace@4..5 " "
+    Name@5..9
+      Identifier@5..9 "Data"
+    Whitespace@9..10 " "
+    ValueConstructorList@10..34
+      OpenBraces@10..11 "{"
+      Whitespace@11..16 "\n    "
+      ValueConstructor@16..20
+        Name@16..18
+          Identifier@16..18 "No"
+        ConstructorParameterList@18..20
+          OpenParenthesis@18..19 "("
+          CloseParenthesis@19..20 ")"
+      Comma@20..21 ","
+      Whitespace@21..26 "\n    "
+      ValueConstructor@26..31
+        Name@26..29
+          Identifier@26..29 "Yes"
+        ConstructorParameterList@29..31
+          OpenParenthesis@29..30 "("
+          CloseParenthesis@30..31 ")"
+      Comma@31..32 ","
+      Whitespace@32..33 "\n"
+      CloseBraces@33..34 "}"

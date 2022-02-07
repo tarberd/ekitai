@@ -1,0 +1,4 @@
+type List {
+    Nil(),
+    Cons(*List),
+}

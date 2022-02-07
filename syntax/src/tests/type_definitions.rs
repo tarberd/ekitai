@@ -1,41 +1,21 @@
 use super::*;
 
+fn check_file(test_file: &str) {
+    super::check_file(
+        &test_data_dir().join("type_definitions"),
+        &SourceFile::parse,
+        test_file,
+    );
+}
+
 #[test]
 fn test_type_with_two_simple_constructors() {
-    check_str(
-        "type Data {
-        No(),
-        Yes(),
-    }",
-        expect![[r#"
-            SourceFile@0..46
-              TypeDefinition@0..46
-                TypeKw@0..4 "type"
-                Whitespace@4..5 " "
-                Name@5..9
-                  Identifier@5..9 "Data"
-                Whitespace@9..10 " "
-                ValueConstructorList@10..46
-                  OpenBraces@10..11 "{"
-                  Whitespace@11..20 "\n        "
-                  ValueConstructor@20..24
-                    Name@20..22
-                      Identifier@20..22 "No"
-                    ConstructorParameterList@22..24
-                      OpenParenthesis@22..23 "("
-                      CloseParenthesis@23..24 ")"
-                  Comma@24..25 ","
-                  Whitespace@25..34 "\n        "
-                  ValueConstructor@34..39
-                    Name@34..37
-                      Identifier@34..37 "Yes"
-                    ConstructorParameterList@37..39
-                      OpenParenthesis@37..38 "("
-                      CloseParenthesis@38..39 ")"
-                  Comma@39..40 ","
-                  Whitespace@40..45 "\n    "
-                  CloseBraces@45..46 "}""#]],
-    );
+  check_file("two_empty_constructors");
+}
+
+#[test]
+fn test_type_with_inner_pointer_type() {
+  check_file("inner_pointer_type");
 }
 
 #[test]
