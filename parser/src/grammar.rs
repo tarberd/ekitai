@@ -279,16 +279,12 @@ fn parse_let_statement<S: TokenSource>(p: &mut Parser<S>, mark: Marker) {
 
 enum PrefixOp {
     Neg,
-    Ref,
-    Deref,
 }
 
 impl PrefixOp {
     fn binding_power(&self) -> ((), u8) {
         match self {
             Self::Neg => ((), 5),
-            Self::Ref => ((), 5),
-            Self::Deref => ((), 5),
         }
     }
 }
@@ -409,6 +405,8 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
         if_expression(p)
     } else if p.at(MatchKw) {
         match_expression(p)
+    } else if p.at(NewKw) {
+        new_expression(p)
     } else {
         p.error(ParseError::new(Integer, p.current()));
         p.error(ParseError::new(Identifier, p.current()));
@@ -418,6 +416,15 @@ fn lhs<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {
     };
 
     Some(postfix_expression(p, lhs))
+}
+
+fn new_expression<S: TokenSource>(p: &mut Parser<S>) -> CompletedMarker {
+    assert!(p.at(NewKw));
+    let m = p.start();
+    p.bump();
+    let path_marker = path_expression(p);
+    call_expr(p, path_marker);
+    m.complete(p, NewExpression)
 }
 
 fn postfix_expression<S: TokenSource>(p: &mut Parser<S>, lhs: CompletedMarker) -> CompletedMarker {

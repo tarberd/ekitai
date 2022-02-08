@@ -82,6 +82,7 @@ fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
         TokenKind::FalseKw => SyntaxKind::FalseKw,
         TokenKind::TypeKw => SyntaxKind::TypeKw,
         TokenKind::MatchKw => SyntaxKind::MatchKw,
+        TokenKind::NewKw => SyntaxKind::NewKw,
         TokenKind::FatArrow => SyntaxKind::FatArrow,
         TokenKind::Identifier => SyntaxKind::Identifier,
         TokenKind::Integer => SyntaxKind::Integer,

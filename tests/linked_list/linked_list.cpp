@@ -54,7 +54,9 @@ template <> struct fmt::formatter<List> : formatter<string> {
 };
 
 extern "C" {
-  List new_empty();
+List new_empty();
+List new_single(int64_t);
+List new_double(int64_t, int64_t);
 }
 
 int main() {
@@ -62,5 +64,9 @@ int main() {
   using Cons_body = List::Cons_body;
   List empty = new_empty();
   fmt::print("empty : {}\n", empty);
+  List single = new_single(5);
+  fmt::print("single : {}\n", single);
+  List ndouble = new_double(14, 5);
+  fmt::print("double : {}\n", ndouble);
   return 0;
 }

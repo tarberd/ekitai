@@ -1240,6 +1240,7 @@ impl<
             hir::Expression::Literal(literal) => {
                 self.fold_literal_expression(indirect_value, expr_id, literal)
             }
+            hir::Expression::New(inner) => self.fold_new_expression(indirect_value, *inner),
         }
     }
 
@@ -1672,9 +1673,18 @@ impl<
                                     .build_struct_gep(variant_ptr, index as u32, "")
                                     .unwrap();
                                 let value = match argument.kind {
-                                    ValueKind::Indirect => self
-                                        .builder
-                                        .build_load(argument.value.into_pointer_value(), ""),
+                                    ValueKind::Indirect => {
+                                        if !argument_ptr
+                                            .get_type()
+                                            .get_element_type()
+                                            .is_pointer_type()
+                                        {
+                                            self.builder
+                                                .build_load(argument.value.into_pointer_value(), "")
+                                        } else {
+                                            argument.value
+                                        }
+                                    }
                                     ValueKind::Direct => argument.value,
                                 };
                                 self.builder.build_store(argument_ptr, value);
@@ -1815,7 +1825,7 @@ impl<
         operator: &UnaryOperator,
         expression: &ExpressionId,
     ) -> Option<Value<'context>> {
-        let expr = self.fold_expression(None, *expression).unwrap().value;
+        let Value { value: expr, kind } = self.fold_expression(None, *expression).unwrap();
         let value = match operator {
             UnaryOperator::Minus => self
                 .builder
@@ -1825,11 +1835,14 @@ impl<
                     "",
                 )
                 .into(),
-            UnaryOperator::Negation => {
-                self.builder.build_not(expr.into_int_value(), "").into()
-            }
-            UnaryOperator::Reference => todo!(),
-            UnaryOperator::Dereference => todo!(),
+            UnaryOperator::Negation => self.builder.build_not(expr.into_int_value(), "").into(),
+            UnaryOperator::Reference | UnaryOperator::Dereference => match kind {
+                ValueKind::Indirect => {
+                    expr.into_pointer_value();
+                    expr
+                }
+                ValueKind::Direct => expr,
+            },
         };
         match indirect_value {
             Some(ptr) => {
@@ -1926,6 +1939,45 @@ impl<
                 None
             }
             None => Some(Value::new(ValueKind::Direct, value)),
+        }
+    }
+
+    fn fold_new_expression(
+        &self,
+        indirect_value: Option<PointerValue<'context>>,
+        expr: ExpressionId,
+    ) -> Option<Value<'context>> {
+        let ty = &self.inference.type_of_expression[expr];
+        let ty = self.type_cache.llvm_type(ty);
+        let ptr = self.builder.build_malloc(ty, "").unwrap();
+        let _ = self.fold_expression(Some(ptr), expr).is_none();
+        match indirect_value {
+            Some(return_ptr) => {
+                let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::Generic);
+                let source = self
+                    .builder
+                    .build_bitcast(ptr, i8_ptr_type, "")
+                    .into_pointer_value();
+                let source_type = &ptr.get_type().get_element_type().as_any_type_enum();
+                let source_alignment = self.type_cache.target_data().get_abi_alignment(source_type);
+                let sink = self
+                    .builder
+                    .build_bitcast(return_ptr, i8_ptr_type, "")
+                    .into_pointer_value();
+                let sink_alignment = self.type_cache.target_data().get_abi_alignment(
+                    &return_ptr.get_type().get_element_type().as_any_type_enum(),
+                );
+                let size = self.type_cache.target_data().get_abi_size(source_type);
+                let size = self
+                    .context
+                    .ptr_sized_int_type(self.type_cache.target_data(), None)
+                    .const_int(size, false);
+                let _ =
+                    self.builder
+                        .build_memcpy(sink, sink_alignment, source, source_alignment, size);
+                None
+            }
+            None => Some(Value::new(ValueKind::Indirect, ptr.as_basic_value_enum())),
         }
     }
 }

@@ -6,3 +6,11 @@ type List {
 fn new_empty() -> List {
     List::Nil()
 }
+
+fn new_single(x: i64) -> List {
+    List::Cons(x, new List::Nil())
+}
+
+fn new_double(y: i64, x: i64) -> List {
+    List::Cons(y, new List::Cons(x, new List::Nil()))
+}
