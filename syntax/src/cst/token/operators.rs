@@ -660,7 +660,12 @@ impl CstToken for UnaryOperator {
 
 impl UnaryOperator {
     const fn syntax_kind_set() -> &'static [SyntaxKind] {
-        const KINDS: &[SyntaxKind] = &[Minus::syntax_kind(), Exclamation::syntax_kind()];
+        const KINDS: &[SyntaxKind] = &[
+            Minus::syntax_kind(),
+            Exclamation::syntax_kind(),
+            Asterisk::syntax_kind(),
+            Ampersand::syntax_kind(),
+        ];
         KINDS
     }
 
@@ -668,6 +673,8 @@ impl UnaryOperator {
         match raw.kind() {
             kind if kind == Minus::syntax_kind() => Self::Minus(Minus(raw)),
             kind if kind == Exclamation::syntax_kind() => Self::Exclamation(Exclamation(raw)),
+            kind if kind == Asterisk::syntax_kind() => Self::Asterisk(Asterisk(raw)),
+            kind if kind == Ampersand::syntax_kind() => Self::Ampersand(Ampersand(raw)),
             _ => panic!(),
         }
     }

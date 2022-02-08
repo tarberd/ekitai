@@ -14,7 +14,7 @@ mod type_definition;
 pub use expression::{
     BlockExpression, CallExpression, Expression, ExpressionStatement, IfExpression,
     InfixExpression, LetStatement, Literal, MatchCase, MatchCaseList, MatchExpression,
-    PathExpression, PrefixExpression, Statement, StatementList,
+    PathExpression, PrefixExpression, Statement, StatementList, NewExpression,
 };
 pub use function_definition::{FunctionDefinition, Parameter, ParameterList};
 pub use module_item::ModuleItem;

@@ -44,6 +44,7 @@ pub enum SyntaxKind {
     FalseKw,
     TypeKw,
     MatchKw,
+    NewKw,
     Identifier,
     Integer,
 
@@ -70,6 +71,7 @@ pub enum SyntaxKind {
     CallExpression,
     IfExpression,
     MatchExpression,
+    NewExpression,
 
     //Statements
     LetStatement,

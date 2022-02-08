@@ -866,3 +866,37 @@ fn match_ref_deref_ref() {
                           Identifier@3..11 "some_ptr""#]],
     );
 }
+
+#[test]
+fn match_new() {
+    check_str(
+        "new List::List(fuckme, 1234)",
+        expect![[r#"
+            NewExpression@0..28
+              NewKw@0..3 "new"
+              Whitespace@3..4 " "
+              CallExpression@4..28
+                PathExpression@4..14
+                  Path@4..14
+                    Path@4..8
+                      PathSegment@4..8
+                        NameReference@4..8
+                          Identifier@4..8 "List"
+                    DoubleColon@8..10 "::"
+                    PathSegment@10..14
+                      NameReference@10..14
+                        Identifier@10..14 "List"
+                ArgumentList@14..28
+                  OpenParenthesis@14..15 "("
+                  PathExpression@15..21
+                    Path@15..21
+                      PathSegment@15..21
+                        NameReference@15..21
+                          Identifier@15..21 "fuckme"
+                  Comma@21..22 ","
+                  Whitespace@22..23 " "
+                  Literal@23..27
+                    Integer@23..27 "1234"
+                  CloseParenthesis@27..28 ")""#]],
+    );
+}

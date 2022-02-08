@@ -772,6 +772,7 @@ impl BodyFold {
             cst::Expression::CallExpression(call) => self.fold_call_expression(call),
             cst::Expression::IfExpression(if_expr) => self.fold_if_expression(if_expr),
             cst::Expression::MatchExpression(match_expr) => self.fold_match_expression(match_expr),
+            cst::Expression::NewExpression(new_expr) => self.fold_new_expression(new_expr),
         }
     }
 
@@ -994,6 +995,13 @@ impl BodyFold {
         let id = self.expressions.alloc(literal);
         (self, id)
     }
+
+    fn fold_new_expression(self, new_expr: cst::NewExpression) -> (Self, Idx<Expression>) {
+        let (mut fold, inner_id) = self.fold_call_expression(new_expr.call_expression().unwrap());
+        let new_expr = Expression::New(inner_id);
+        let id = fold.expressions.alloc(new_expr);
+        (fold, id)
+    }
 }
 
 pub type PatternId = Idx<Pattern>;
@@ -1036,6 +1044,7 @@ pub enum Expression {
         callee: ExpressionId,
         arguments: Vec<ExpressionId>,
     },
+    New(ExpressionId),
     Binary(BinaryOperator, ExpressionId, ExpressionId),
     Unary(UnaryOperator, ExpressionId),
     Path(Path),
@@ -1454,6 +1463,7 @@ impl<'body> ExpressionScopeFold<'body> {
             Expression::Unary(_, expr) => self.fold_expression(*expr, scope_id),
             Expression::Path(_) => self,
             Expression::Literal(_) => self,
+            Expression::New(inner) => self.fold_expression(*inner, scope_id),
         }
     }
 
@@ -1731,6 +1741,10 @@ impl<'s> InferenceResultFold<'s> {
                     }
                     x => panic!("function call not implemented for {:?} type", x),
                 }
+            }
+            Expression::New(inner) => {
+                let (fold, inner) = self.fold_expression_type(*inner);
+                (fold, Type::Pointer(Box::new(inner)))
             }
         };
         fold.inference_result

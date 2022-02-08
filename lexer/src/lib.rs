@@ -76,6 +76,8 @@ pub enum TokenKind {
     TypeKw,
     #[token("match")]
     MatchKw,
+    #[token("new")]
+    NewKw,
     #[regex("[[:alpha:]_][[:word:]]*")]
     Identifier,
     #[regex("[[:digit:]][[:digit:]_]*([[:alpha:]][[:word:]]*)?")]
@@ -318,6 +320,11 @@ mod tests {
     #[test]
     fn lex_match() {
         check("match", TokenKind::MatchKw);
+    }
+
+    #[test]
+    fn lex_new() {
+        check("new", TokenKind::NewKw);
     }
 
     #[test]

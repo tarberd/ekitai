@@ -4,6 +4,7 @@ mod if_expression;
 mod infix_expression;
 mod literal;
 mod match_expression;
+mod new_expression;
 mod parenthesis_expression;
 mod path_expression;
 mod prefix_expression;
@@ -16,6 +17,7 @@ pub use if_expression::IfExpression;
 pub use infix_expression::InfixExpression;
 pub use literal::Literal;
 pub use match_expression::{MatchCase, MatchCaseList, MatchExpression};
+pub use new_expression::NewExpression;
 pub use parenthesis_expression::ParenthesisExpression;
 pub use path_expression::PathExpression;
 pub use prefix_expression::PrefixExpression;
@@ -34,6 +36,7 @@ pub enum Expression {
     CallExpression(CallExpression),
     IfExpression(IfExpression),
     MatchExpression(MatchExpression),
+    NewExpression(NewExpression),
 }
 
 impl Expression {
@@ -48,6 +51,7 @@ impl Expression {
             CallExpression::syntax_kind(),
             IfExpression::syntax_kind(),
             MatchExpression::syntax_kind(),
+            NewExpression::syntax_kind(),
         ];
         KINDS
     }
@@ -77,6 +81,7 @@ impl Expression {
             kind if kind == MatchExpression::syntax_kind() => {
                 Self::MatchExpression(MatchExpression(raw))
             }
+            kind if kind == NewExpression::syntax_kind() => Self::NewExpression(NewExpression(raw)),
             _ => panic!("raw: {:?}", raw),
         }
     }
@@ -94,6 +99,7 @@ impl CstNode for Expression {
             Expression::CallExpression(e) => e.as_syntax_node(),
             Expression::IfExpression(e) => e.as_syntax_node(),
             Expression::MatchExpression(e) => e.as_syntax_node(),
+            Expression::NewExpression(e) => e.as_syntax_node(),
         }
     }
 }
