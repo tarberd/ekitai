@@ -1826,22 +1826,30 @@ impl<
         expression: &ExpressionId,
     ) -> Option<Value<'context>> {
         let Value { value: expr, kind } = self.fold_expression(None, *expression).unwrap();
-        let value = match operator {
-            UnaryOperator::Minus => self
-                .builder
-                .build_int_sub(
-                    expr.get_type().into_int_type().const_zero(),
-                    expr.into_int_value(),
-                    "",
-                )
-                .into(),
-            UnaryOperator::Negation => self.builder.build_not(expr.into_int_value(), "").into(),
-            UnaryOperator::Reference | UnaryOperator::Dereference => match kind {
+        let (kind, value) = match operator {
+            UnaryOperator::Minus => (
+                kind,
+                self.builder
+                    .build_int_sub(
+                        expr.get_type().into_int_type().const_zero(),
+                        expr.into_int_value(),
+                        "",
+                    )
+                    .into(),
+            ),
+            UnaryOperator::Negation => (
+                kind,
+                self.builder.build_not(expr.into_int_value(), "").into(),
+            ),
+            UnaryOperator::Reference => {
+                todo!("reference operator lowering to llvm is not implemented")
+            }
+            UnaryOperator::Dereference => match kind {
                 ValueKind::Indirect => {
                     expr.into_pointer_value();
-                    expr
+                    (kind, expr)
                 }
-                ValueKind::Direct => expr,
+                ValueKind::Direct => (ValueKind::Indirect, expr),
             },
         };
         match indirect_value {
@@ -1849,7 +1857,7 @@ impl<
                 self.builder.build_store(ptr, value);
                 None
             }
-            None => Some(Value::new(ValueKind::Direct, value)),
+            None => Some(Value::new(kind, value)),
         }
     }
 
@@ -1977,7 +1985,7 @@ impl<
                         .build_memcpy(sink, sink_alignment, source, source_alignment, size);
                 None
             }
-            None => Some(Value::new(ValueKind::Indirect, ptr.as_basic_value_enum())),
+            None => Some(Value::new(ValueKind::Direct, ptr.as_basic_value_enum())),
         }
     }
 }

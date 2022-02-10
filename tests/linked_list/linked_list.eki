@@ -14,3 +14,37 @@ fn new_single(x: i64) -> List {
 fn new_double(y: i64, x: i64) -> List {
     List::Cons(y, new List::Cons(x, new List::Nil()))
 }
+
+fn new_empty_ptr() -> *List {
+    new List::Nil()
+}
+
+fn new_single_ptr(x: i64) -> *List {
+    new List::Cons(x, new List::Nil())
+}
+
+fn new_double_ptr(y: i64, x: i64) -> *List {
+    new List::Cons(y, new List::Cons(x, new List::Nil()))
+}
+
+fn add_cons(x: i64, tail: *List) -> *List {
+    new List::Cons(x, tail)
+}
+
+fn accumulate(acc: i64, list: *List) -> i64 {
+    match *list {
+        List::Nil() => acc,
+        List::Cons(x, tail) => accumulate(acc + x, tail),
+    }
+}
+
+fn map_square(list: *List) -> *List {
+    match *list {
+        List::Nil() => list,
+        List::Cons(x, tail) => {
+            let tail = map_square(tail);
+            let square = x*x;
+            new List::Cons(square, tail)
+        }
+    }
+}
