@@ -1,0 +1,65 @@
+SourceFile@0..55
+  FunctionDefinition@0..55
+    FnKw@0..2 "fn"
+    Whitespace@2..3 " "
+    Name@3..7
+      Identifier@3..7 "test"
+    ParameterList@7..26
+      OpenParenthesis@7..8 "("
+      Parameter@8..25
+        BindingPattern@8..9
+          Name@8..9
+            Identifier@8..9 "x"
+        Colon@9..10 ":"
+        Whitespace@10..11 " "
+        RefinementType@11..25
+          OpenBraces@11..12 "{"
+          BindingPattern@12..13
+            Name@12..13
+              Identifier@12..13 "x"
+          Colon@13..14 ":"
+          PathType@14..17
+            Path@14..17
+              PathSegment@14..17
+                NameReference@14..17
+                  Identifier@14..17 "i64"
+          Whitespace@17..18 " "
+          Pipe@18..19 "|"
+          Whitespace@19..20 " "
+          Literal@20..24
+            TrueKw@20..24 "true"
+          CloseBraces@24..25 "}"
+      CloseParenthesis@25..26 ")"
+    Whitespace@26..27 " "
+    ThinArrow@27..29 "->"
+    Whitespace@29..30 " "
+    RefinementType@30..45
+      OpenBraces@30..31 "{"
+      BindingPattern@31..32
+        Name@31..32
+          Identifier@31..32 "x"
+      Colon@32..33 ":"
+      Whitespace@33..34 " "
+      PathType@34..37
+        Path@34..37
+          PathSegment@34..37
+            NameReference@34..37
+              Identifier@34..37 "i64"
+      Whitespace@37..38 " "
+      Pipe@38..39 "|"
+      Whitespace@39..40 " "
+      Literal@40..44
+        TrueKw@40..44 "true"
+      CloseBraces@44..45 "}"
+    Whitespace@45..46 " "
+    BlockExpression@46..55
+      StatementList@46..55
+        OpenBraces@46..47 "{"
+        Whitespace@47..52 "\n    "
+        PathExpression@52..53
+          Path@52..53
+            PathSegment@52..53
+              NameReference@52..53
+                Identifier@52..53 "x"
+        Whitespace@53..54 "\n"
+        CloseBraces@54..55 "}"

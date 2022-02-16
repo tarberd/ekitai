@@ -1,0 +1,3 @@
+fn test(x: {x:i64 | true}) -> {x: i64 | true} {
+    x
+}

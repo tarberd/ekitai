@@ -26,6 +26,7 @@ pub enum SyntaxKind {
     Slash,
     Percent,
     Exclamation,
+    Pipe,
     DoubleEquals,
     ExclamationEquals,
     Less,
@@ -50,6 +51,7 @@ pub enum SyntaxKind {
 
     // Types
     PathType,
+    RefinementType,
     PointerType,
 
     // Patterns

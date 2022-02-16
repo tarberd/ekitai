@@ -27,7 +27,7 @@ pub use token::{
     Asterisk, BinaryOperator, Boolean, Identifier, Integer, Minus, Percent, Plus, Slash,
     TokenLiteral, UnaryOperator,
 };
-pub use ty::{PathType, Type};
+pub use ty::{PathType, Type, RefinementType, PointerType};
 pub use type_definition::{TypeDefinition, ValueConstructor, ValueConstructorList};
 
 use parser::SyntaxKind;
