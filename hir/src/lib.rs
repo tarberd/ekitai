@@ -1,10 +1,13 @@
 use la_arena::{Arena, ArenaMap, Idx};
+use refinement::Predicate;
 use smol_str::SmolStr;
 use std::{collections::HashMap, convert::TryFrom, fmt::Debug, marker::PhantomData};
 use syntax::{
     cst::{self, raw::SyntaxNodePointer, CstNode},
     Parse,
 };
+
+pub mod refinement;
 
 pub trait Upcast<T: ?Sized> {
     fn upcast(&self) -> &T;
@@ -540,6 +543,7 @@ pub enum TypeableValueDefinitionId {
 pub enum Type {
     AbstractDataType(TypeLocationId),
     FunctionDefinition(CallableDefinitionId),
+    Refinement(Box<Type>, Name, Predicate),
     Pointer(Box<Type>),
     Scalar(ScalarType),
 }
@@ -710,6 +714,26 @@ impl Body {
             root_expression,
         }
     }
+
+    pub fn lower_refinement_body(refinement: cst::RefinementType) -> Self {
+        let (
+            BodyFold {
+                expressions,
+                patterns,
+                parameters,
+            },
+            root_expression,
+        ) = BodyFold::new()
+            .fold_refinement_binding(&refinement)
+            .fold_expression(refinement.refinement_expression().unwrap());
+
+        Self {
+            patterns,
+            parameters,
+            expressions,
+            root_expression,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -734,6 +758,13 @@ impl BodyFold {
                 fold.parameters.push(pattern_id);
                 fold
             })
+    }
+
+    fn fold_refinement_binding(self, refinement: &cst::RefinementType) -> Self {
+        let pattern = refinement.inner_pattern().unwrap();
+        let (mut fold, pattern_id) = self.fold_pattern(pattern);
+        fold.parameters.push(pattern_id);
+        fold
     }
 
     fn fold_pattern(self, pattern: cst::Pattern) -> (Self, PatternId) {
@@ -1159,6 +1190,7 @@ pub type TypeReferenceId = Idx<TypeReference>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeReference {
     Path(Path),
+    Refinement(Box<TypeReference>, Name, Predicate),
     Pointer(Box<TypeReference>),
 }
 
@@ -1169,6 +1201,14 @@ impl TypeReference {
             cst::Type::PointerType(ptr_ty) => {
                 Self::Pointer(Box::new(Self::lower(ptr_ty.inner_type().unwrap())))
             }
+            cst::Type::RefinementType(refinement_ty) => Self::Refinement(
+                Box::new(Self::lower(refinement_ty.inner_type().unwrap())),
+                Name::lower(match refinement_ty.inner_pattern().unwrap() {
+                    cst::Pattern::DeconstructorPattern(_) => todo!(),
+                    cst::Pattern::BindingPattern(binding) => binding.name().unwrap(),
+                }),
+                Predicate::lower(refinement_ty.refinement_expression().unwrap()),
+            ),
         }
     }
 }
@@ -1706,11 +1746,30 @@ impl<'s> InferenceResultFold<'s> {
             }
             Expression::Literal(lit) => {
                 let ty = match lit {
-                    Literal::Integer(_, some_kind) => match some_kind {
-                        Some(int_kind) => Type::Scalar(ScalarType::Integer(int_kind.clone())),
-                        None => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                    Literal::Integer(value, some_kind) => {
+                        let inner = match some_kind {
+                            Some(int_kind) => Type::Scalar(ScalarType::Integer(int_kind.clone())),
+                            None => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                        };
+
+                        let name = Name { id: "lit".into() };
+                        let predicate = Predicate::Binary(
+                            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
+                            Box::new(Predicate::Variable(name.clone())),
+                            Box::new(Predicate::Integer(*value)),
+                        );
+                        Type::Refinement(Box::new(inner), name, predicate)
+                    }
+                    Literal::Bool(value) => {
+                        let inner = Type::Scalar(ScalarType::Boolean);
+                        let name = Name { id: "lit".into() };
+                        let predicate = Predicate::Binary(
+                            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
+                            Box::new(Predicate::Variable(name.clone())),
+                            Box::new(Predicate::Boolean(*value)),
+                        );
+                        Type::Refinement(Box::new(inner), name, predicate)
                     },
-                    Literal::Bool(_) => Type::Scalar(ScalarType::Boolean),
                 };
                 (self, ty)
             }
@@ -1793,6 +1852,10 @@ impl<'d> TypeReferenceResolver<'d> {
             TypeReference::Pointer(inner) => {
                 let inner = self.resolve_type_reference(inner)?;
                 Type::Pointer(Box::new(inner))
+            }
+            TypeReference::Refinement(inner, name, predicate) => {
+                let inner = self.resolve_type_reference(inner)?;
+                Type::Refinement(Box::new(inner), name.clone(), predicate.clone())
             }
         };
         Some(ty)

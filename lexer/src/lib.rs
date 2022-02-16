@@ -44,6 +44,8 @@ pub enum TokenKind {
     Less,
     #[token("!")]
     Exclamation,
+    #[token("|")]
+    Pipe,
     #[token("==")]
     DoubleEquals,
     #[token("!=")]
@@ -230,6 +232,11 @@ mod tests {
     #[test]
     fn lex_exclamation() {
         check("!", TokenKind::Exclamation);
+    }
+
+    #[test]
+    fn lex_pipe() {
+        check("|", TokenKind::Pipe);
     }
 
     #[test]
