@@ -64,6 +64,7 @@ fn into_syntax_kind(token: TokenKind) -> SyntaxKind {
         TokenKind::Slash => SyntaxKind::Slash,
         TokenKind::Percent => SyntaxKind::Percent,
         TokenKind::Exclamation => SyntaxKind::Exclamation,
+        TokenKind::Pipe => SyntaxKind::Pipe,
         TokenKind::DoubleEquals => SyntaxKind::DoubleEquals,
         TokenKind::ExclamationEquals => SyntaxKind::ExclamationEquals,
         TokenKind::Greater => SyntaxKind::Greater,

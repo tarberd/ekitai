@@ -204,9 +204,10 @@ fn parse_type<S: TokenSource>(p: &mut Parser<S>) {
         p.bump();
         parse_type(p);
         m.complete(p, PointerType);
-    }
-    if p.at(Identifier) {
-        parse_path_type(p)
+    } else if p.at(OpenBraces) {
+        parse_refinement_type(p);
+    } else if p.at(Identifier) {
+        parse_path_type(p);
     }
 }
 
@@ -215,6 +216,22 @@ fn parse_path_type<S: TokenSource>(p: &mut Parser<S>) {
     let m = p.start();
     parse_path(p);
     m.complete(p, PathType);
+}
+
+fn parse_refinement_type<S: TokenSource>(p: &mut Parser<S>) {
+    assert!(p.at(OpenBraces));
+    let m = p.start();
+    p.bump();
+    parse_pattern(p);
+    assert!(p.at(Colon));
+    p.bump();
+    parse_type(p);
+    assert!(p.at(Pipe));
+    p.bump();
+    expression(p);
+    assert!(p.at(CloseBraces));
+    p.bump();
+    m.complete(p, RefinementType);
 }
 
 fn parse_block_expression<S: TokenSource>(p: &mut Parser<S>) -> Option<CompletedMarker> {

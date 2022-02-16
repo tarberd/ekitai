@@ -27,3 +27,8 @@ fn trailing_parameter_comma() {
 fn missing_body() {
     check_file("missing_body");
 }
+
+#[test]
+fn parameters_with_refinements() {
+    check_file("parameter_with_refinements");
+}
