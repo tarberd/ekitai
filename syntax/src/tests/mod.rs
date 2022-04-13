@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::cst::CstNode;
+use crate::ast::AstNode;
 
 use super::*;
 use expect_test::{expect, expect_file, Expect};
@@ -24,7 +24,7 @@ fn check_str(actual: &str, expect: Expect) {
     expect.assert_eq(&parse.debug_dump());
 }
 
-fn check_file<N: CstNode>(path: &Path, parse: &dyn Fn(&str) -> Parse<N>, test_name: &str) {
+fn check_file<N: AstNode<Language = EkitaiLanguage>>(path: &Path, parse: &dyn Fn(&str) -> Parse<N>, test_name: &str) {
     let file_name = format!("{}.eki", test_name);
     let path = path.join(file_name);
     let source = std::fs::read_to_string(&path)

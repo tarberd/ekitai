@@ -1,5 +1,5 @@
 use crate::{ArithmeticOperator, BinaryOperator, CompareOperator, LogicOperator, Name, Ordering};
-use syntax::cst;
+use syntax::ast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Predicate {
@@ -17,10 +17,10 @@ pub enum UnaryOperator {
 }
 
 impl Predicate {
-    pub(crate) fn lower(expr: cst::Expression) -> Self {
+    pub(crate) fn lower(expr: ast::Expression) -> Self {
         match expr {
-            cst::Expression::Literal(lit) => match lit.literal_kind() {
-                cst::TokenLiteral::Integer(int) => {
+            ast::Expression::Literal(lit) => match lit.literal_kind() {
+                ast::TokenLiteral::Integer(int) => {
                     let value = int
                         .radical_and_suffix()
                         .0
@@ -31,12 +31,12 @@ impl Predicate {
                         .unwrap();
                     Self::Integer(value)
                 }
-                cst::TokenLiteral::Boolean(bool) => Self::Boolean(match bool {
-                    cst::Boolean::True(_) => true,
-                    cst::Boolean::False(_) => false,
+                ast::TokenLiteral::Boolean(bool) => Self::Boolean(match bool {
+                    ast::Boolean::True(_) => true,
+                    ast::Boolean::False(_) => false,
                 }),
             },
-            cst::Expression::PathExpression(path) => {
+            ast::Expression::PathExpression(path) => {
                 let name = Name::lower_nameref(
                     path.path()
                         .unwrap()
@@ -51,81 +51,81 @@ impl Predicate {
                 };
                 Self::Variable(name)
             }
-            cst::Expression::InfixExpression(infix) => {
+            ast::Expression::InfixExpression(infix) => {
                 let left = Self::lower(infix.lhs().unwrap());
                 let right = Self::lower(infix.rhs().unwrap());
                 let bin_op = match infix.operator().unwrap() {
-                    cst::BinaryOperator::Asterisk(_) => {
+                    ast::BinaryOperator::Asterisk(_) => {
                         BinaryOperator::Arithmetic(ArithmeticOperator::Mul)
                     }
-                    cst::BinaryOperator::Plus(_) => {
+                    ast::BinaryOperator::Plus(_) => {
                         BinaryOperator::Arithmetic(ArithmeticOperator::Add)
                     }
-                    cst::BinaryOperator::Minus(_) => {
+                    ast::BinaryOperator::Minus(_) => {
                         BinaryOperator::Arithmetic(ArithmeticOperator::Sub)
                     }
-                    cst::BinaryOperator::Slash(_) => {
+                    ast::BinaryOperator::Slash(_) => {
                         BinaryOperator::Arithmetic(ArithmeticOperator::Div)
                     }
-                    cst::BinaryOperator::Percent(_) => {
+                    ast::BinaryOperator::Percent(_) => {
                         BinaryOperator::Arithmetic(ArithmeticOperator::Rem)
                     }
-                    cst::BinaryOperator::DoubleEquals(_) => {
+                    ast::BinaryOperator::DoubleEquals(_) => {
                         BinaryOperator::Compare(CompareOperator::Equality { negated: false })
                     }
-                    cst::BinaryOperator::ExclamationEquals(_) => {
+                    ast::BinaryOperator::ExclamationEquals(_) => {
                         BinaryOperator::Compare(CompareOperator::Equality { negated: true })
                     }
-                    cst::BinaryOperator::Less(_) => {
+                    ast::BinaryOperator::Less(_) => {
                         BinaryOperator::Compare(CompareOperator::Order {
                             ordering: Ordering::Less,
                             strict: true,
                         })
                     }
-                    cst::BinaryOperator::LessEquals(_) => {
+                    ast::BinaryOperator::LessEquals(_) => {
                         BinaryOperator::Compare(CompareOperator::Order {
                             ordering: Ordering::Less,
                             strict: false,
                         })
                     }
-                    cst::BinaryOperator::Greater(_) => {
+                    ast::BinaryOperator::Greater(_) => {
                         BinaryOperator::Compare(CompareOperator::Order {
                             ordering: Ordering::Greater,
                             strict: true,
                         })
                     }
-                    cst::BinaryOperator::GreaterEquals(_) => {
+                    ast::BinaryOperator::GreaterEquals(_) => {
                         BinaryOperator::Compare(CompareOperator::Order {
                             ordering: Ordering::Greater,
                             strict: false,
                         })
                     }
-                    cst::BinaryOperator::DoubleAmpersand(_) => {
+                    ast::BinaryOperator::DoubleAmpersand(_) => {
                         BinaryOperator::Logic(LogicOperator::And)
                     }
-                    cst::BinaryOperator::DoublePipe(_) => BinaryOperator::Logic(LogicOperator::Or),
+                    ast::BinaryOperator::DoublePipe(_) => BinaryOperator::Logic(LogicOperator::Or),
                 };
                 Self::Binary(bin_op, Box::new(left), Box::new(right))
             }
-            cst::Expression::PrefixExpression(prefix) => {
+            ast::Expression::PrefixExpression(prefix) => {
                 let inner = Self::lower(prefix.inner().unwrap());
                 let op = match prefix.operator().unwrap() {
-                    cst::UnaryOperator::Minus(_) => UnaryOperator::Minus,
-                    cst::UnaryOperator::Exclamation(_) => UnaryOperator::Negation,
-                    cst::UnaryOperator::Asterisk(_) | cst::UnaryOperator::Ampersand(_) => {
+                    ast::UnaryOperator::Minus(_) => UnaryOperator::Minus,
+                    ast::UnaryOperator::Exclamation(_) => UnaryOperator::Negation,
+                    ast::UnaryOperator::Asterisk(_) | ast::UnaryOperator::Ampersand(_) => {
                         panic!("Cannot reference and dereference in refinements.")
                     }
                 };
                 Self::Unary(op, Box::new(inner))
             }
-            cst::Expression::ParenthesisExpression(inner) => {
+            ast::Expression::ParenthesisExpression(inner) => {
                 Self::lower(inner.inner_expression().unwrap())
             }
-            x @ cst::Expression::BlockExpression(_)
-            | x @ cst::Expression::CallExpression(_)
-            | x @ cst::Expression::IfExpression(_)
-            | x @ cst::Expression::MatchExpression(_)
-            | x @ cst::Expression::NewExpression(_) => {
+            x @ ast::Expression::BlockExpression(_)
+            | x @ ast::Expression::CallExpression(_)
+            | x @ ast::Expression::IfExpression(_)
+            | x @ ast::Expression::MatchExpression(_)
+            | x @ ast::Expression::NewExpression(_) => {
                 panic!("{:?} not implemented for refinements", x)
             }
         }

@@ -7,7 +7,7 @@ use syntax_token_source::SyntaxTokenSource;
 pub use syntax_tree_sink::SyntaxError;
 use syntax_tree_sink::SyntaxTreeSink;
 
-pub fn parse(input: &str) -> (GreenNode, Vec<SyntaxError>) {
+pub(crate) fn parse(input: &str) -> (GreenNode, Vec<SyntaxError>) {
     let tokens: Vec<_> = Lexer::new(input).collect();
     let token_source = SyntaxTokenSource::new(&tokens);
     let tree_sink = SyntaxTreeSink::new(&tokens);
@@ -15,7 +15,7 @@ pub fn parse(input: &str) -> (GreenNode, Vec<SyntaxError>) {
     tree_sink.finish()
 }
 
-pub fn parse_expression(input: &str) -> (GreenNode, Vec<SyntaxError>) {
+pub(crate) fn parse_expression(input: &str) -> (GreenNode, Vec<SyntaxError>) {
     let tokens: Vec<_> = Lexer::new(input).collect();
     let token_source = SyntaxTokenSource::new(&tokens);
     let tree_sink = SyntaxTreeSink::new(&tokens);

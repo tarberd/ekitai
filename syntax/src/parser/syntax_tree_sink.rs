@@ -1,4 +1,4 @@
-use crate::cst::raw::EkitaiLanguage;
+use crate::ast::EkitaiLanguage;
 use crate::lexer::Token;
 use parser::{ParseError, SyntaxKind, TreeSink};
 use rowan::{GreenNode, GreenNodeBuilder, Language};
