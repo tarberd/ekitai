@@ -48,3 +48,14 @@ fn map_square(list: *List) -> *List {
         }
     }
 }
+
+fn map_square(list: *List) -> *List {
+    match *list {
+        List::Nil() => list,
+        List::Cons(x, tail) => {
+            let tail = map_square(tail);
+            let square = x*x;
+            new List::Cons(square, tail)
+        }
+    }
+}

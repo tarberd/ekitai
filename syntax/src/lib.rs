@@ -1,4 +1,4 @@
-pub mod cst;
+pub mod ast;
 pub(crate) mod lexer;
 pub mod parser;
 
@@ -6,19 +6,19 @@ pub mod parser;
 mod tests;
 
 use crate::parser::SyntaxError;
-use cst::raw::SyntaxNode;
-use cst::{Expression, SourceFile};
+use ast::{EkitaiLanguage, SyntaxNode};
+use ast::{Expression, SourceFile};
 use rowan::GreenNode;
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Parse<T: cst::CstNode> {
+pub struct Parse<T: ast::AstNode<Language = EkitaiLanguage>> {
     green_node: GreenNode,
     errors: Vec<SyntaxError>,
     _cst_node_type: PhantomData<T>,
 }
 
-impl<T: cst::CstNode> Parse<T> {
+impl<T: ast::AstNode<Language = EkitaiLanguage>> Parse<T> {
     fn new(green_node: GreenNode, errors: Vec<SyntaxError>) -> Self {
         Self {
             green_node,
@@ -32,7 +32,7 @@ impl<T: cst::CstNode> Parse<T> {
     }
 
     pub fn ast_node(&self) -> T {
-        T::try_from(self.syntax_node()).ok().unwrap()
+        T::cast(self.syntax_node()).unwrap()
     }
 
     pub fn errors(&self) -> &Vec<SyntaxError> {
