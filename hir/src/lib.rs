@@ -1,36 +1,15 @@
 use la_arena::{Arena, ArenaMap, Idx};
 use refinement::Predicate;
 use smol_str::SmolStr;
-use std::{collections::HashMap, convert::TryFrom, fmt::Debug, marker::PhantomData};
-use syntax::{
-    cst::{self, raw::SyntaxNodePointer, CstNode},
-    Parse,
-};
+use std::{collections::HashMap, fmt::Debug};
+use syntax::ast::{self, AstToken};
 
+mod source_db;
 pub mod refinement;
+pub use source_db::{AstNodeId, AstNodeMap, SourceDatabase, SourceDatabaseStorage};
 
 pub trait Upcast<T: ?Sized> {
     fn upcast(&self) -> &T;
-}
-
-#[salsa::query_group(SourceDatabaseStorage)]
-pub trait SourceDatabase {
-    #[salsa::input]
-    fn source_file_text(&self) -> String;
-
-    fn source_file_parse(&self) -> Parse<cst::SourceFile>;
-
-    fn source_file_cst_id_map(&self) -> CstIdMap;
-}
-
-fn source_file_parse(source_db: &dyn SourceDatabase) -> Parse<cst::SourceFile> {
-    let source = source_db.source_file_text();
-    cst::SourceFile::parse(source.as_str())
-}
-
-fn source_file_cst_id_map(source_db: &dyn SourceDatabase) -> CstIdMap {
-    let parse = source_db.source_file_parse();
-    CstIdMap::from_source_file(parse.ast_node())
 }
 
 #[salsa::query_group(InternDatabaseStorage)]
@@ -97,15 +76,15 @@ pub trait DefinitionsDatabase:
 
 fn source_file_item_tree(def_db: &dyn DefinitionsDatabase) -> ItemTree {
     let parse = def_db.source_file_parse();
-    let cst_id_map = def_db.source_file_cst_id_map();
+    let ast_node_map = def_db.source_file_ast_node_map();
 
     let source = parse.ast_node();
 
     let functions = source
         .module_items()
         .flat_map(|item| match item {
-            cst::ModuleItem::FunctionDefinition(f) => {
-                Some(FunctionDefinition::lower(&cst_id_map, f))
+            ast::ModuleItem::FunctionDefinition(f) => {
+                Some(FunctionDefinition::lower(&ast_node_map, f))
             }
             _ => None,
         })
@@ -114,7 +93,7 @@ fn source_file_item_tree(def_db: &dyn DefinitionsDatabase) -> ItemTree {
     let types = source
         .module_items()
         .flat_map(|item| match item {
-            cst::ModuleItem::TypeDefinition(t) => Some(TypeDefinition::lower(&cst_id_map, t)),
+            ast::ModuleItem::TypeDefinition(t) => Some(TypeDefinition::lower(&ast_node_map, t)),
             _ => None,
         })
         .collect();
@@ -158,16 +137,13 @@ fn source_file_definitions_map(def_db: &dyn DefinitionsDatabase) -> DefinitionsM
 
 fn body_of_definition(db: &dyn DefinitionsDatabase, id: FunctionLocationId) -> Body {
     let source_file = db.source_file_parse();
-    let cst_map = db.source_file_cst_id_map();
+    let ast_node_map = db.source_file_ast_node_map();
     let package_defs = db.source_file_item_tree();
     let location = db.lookup_intern_function(id);
 
-    let fun_def = &package_defs.functions[location.id];
-    let source = &cst_map.arena[fun_def.cst_node_id.cst_id];
-    let function_syntax_node = source.get_syntax_node(&source_file.syntax_node());
-    let function_cst_node = cst::FunctionDefinition::try_from(function_syntax_node)
-        .ok()
-        .unwrap();
+    let fun_def = package_defs.function(location);
+    let source = ast_node_map.get(&fun_def.ast_node_id);
+    let function_cst_node = source.to_node(&source_file.syntax_node());
 
     Body::lower(function_cst_node)
 }
@@ -328,46 +304,15 @@ fn infer_body_expression_types(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CstIdMap {
-    arena: Arena<SyntaxNodePointer>,
-}
-
-impl CstIdMap {
-    fn from_source_file(source_file: cst::SourceFile) -> Self {
-        let arena = source_file
-            .module_items()
-            .map(|item| SyntaxNodePointer::new(item.as_syntax_node().clone()))
-            .collect();
-
-        Self { arena }
-    }
-
-    fn cst_id<N: cst::CstNode>(&self, node: &N) -> CstId<N> {
-        let node_ptr = SyntaxNodePointer::new(node.as_syntax_node().clone());
-        let cst_id = self
-            .arena
-            .iter()
-            .find(|(_, ptr)| **ptr == node_ptr)
-            .map(|(id, _)| id)
-            .expect("cant find node");
-
-        CstId {
-            cst_id,
-            phantom: PhantomData,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CstId<N: cst::CstNode> {
-    pub cst_id: Idx<SyntaxNodePointer>,
-    pub phantom: PhantomData<fn() -> N>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemTree {
-    pub functions: Arena<FunctionDefinition>,
-    pub types: Arena<TypeDefinition>,
+    functions: Arena<FunctionDefinition>,
+    types: Arena<TypeDefinition>,
+}
+
+impl ItemTree {
+    pub(crate) fn function(&self, location: FunctionLocation) -> &FunctionDefinition {
+        &self.functions[location.id]
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -584,7 +529,7 @@ pub type TypeDefinitionId = Idx<TypeDefinition>;
 pub struct TypeDefinition {
     pub name: Name,
     pub value_constructors: Arena<ValueConstructor>,
-    pub cst_id: CstId<cst::TypeDefinition>,
+    pub ast_node_id: AstNodeId<ast::TypeDefinition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -600,7 +545,7 @@ impl TypeDefinitionData {
 }
 
 impl TypeDefinition {
-    fn lower(cst_map: &CstIdMap, ty: cst::TypeDefinition) -> Self {
+    fn lower(ast_node_map: &AstNodeMap, ty: ast::TypeDefinition) -> Self {
         TypeDefinition {
             name: Name::lower(ty.name().unwrap()),
             value_constructors: ty
@@ -609,7 +554,7 @@ impl TypeDefinition {
                 .constructors()
                 .map(ValueConstructor::lower)
                 .collect(),
-            cst_id: cst_map.cst_id(&ty),
+            ast_node_id: ast_node_map.ast_id(&ty),
         }
     }
 }
@@ -627,7 +572,7 @@ pub struct ValueConstructor {
 }
 
 impl ValueConstructor {
-    fn lower(ctor: cst::ValueConstructor) -> Self {
+    fn lower(ctor: ast::ValueConstructor) -> Self {
         ValueConstructor {
             name: Name::lower(ctor.name().unwrap()),
             parameters: ctor
@@ -647,7 +592,7 @@ pub struct FunctionDefinition {
     pub name: Name,
     pub parameter_types: Vec<TypeReference>,
     pub return_type: TypeReference,
-    pub cst_node_id: CstId<cst::FunctionDefinition>,
+    pub ast_node_id: AstNodeId<ast::FunctionDefinition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -658,7 +603,7 @@ pub struct FunctionDefinitionData {
 }
 
 impl FunctionDefinition {
-    fn lower(cstmap: &CstIdMap, f: cst::FunctionDefinition) -> Self {
+    fn lower(ast_node_map: &AstNodeMap, f: ast::FunctionDefinition) -> Self {
         let parameter_types = {
             if let Some(param_list) = f.parameter_list() {
                 let params = param_list.parameters();
@@ -676,12 +621,12 @@ impl FunctionDefinition {
         let name = Name::lower(f.name().expect("missing name from function declaration."));
         let return_type =
             TypeReference::lower(f.return_type().expect("missin return type from function"));
-        let cst_node_id = cstmap.cst_id(&f);
+        let ast_node_id = ast_node_map.ast_id(&f);
         Self {
             name,
             parameter_types,
             return_type,
-            cst_node_id,
+            ast_node_id,
         }
     }
 }
@@ -695,7 +640,7 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn lower(function: cst::FunctionDefinition) -> Self {
+    pub fn lower(function: ast::FunctionDefinition) -> Self {
         let (
             BodyFold {
                 expressions,
@@ -715,7 +660,7 @@ impl Body {
         }
     }
 
-    pub fn lower_refinement_body(refinement: cst::RefinementType) -> Self {
+    pub fn lower_refinement_body(refinement: ast::RefinementType) -> Self {
         let (
             BodyFold {
                 expressions,
@@ -725,7 +670,7 @@ impl Body {
             root_expression,
         ) = BodyFold::new()
             .fold_refinement_binding(&refinement)
-            .fold_expression(refinement.refinement_expression().unwrap());
+            .fold_expression(refinement.predicate().unwrap());
 
         Self {
             patterns,
@@ -748,7 +693,7 @@ impl BodyFold {
         BodyFold::default()
     }
 
-    fn fold_function_parameters(self, function: &cst::FunctionDefinition) -> Self {
+    fn fold_function_parameters(self, function: &ast::FunctionDefinition) -> Self {
         function
             .parameter_list()
             .unwrap()
@@ -760,16 +705,16 @@ impl BodyFold {
             })
     }
 
-    fn fold_refinement_binding(self, refinement: &cst::RefinementType) -> Self {
+    fn fold_refinement_binding(self, refinement: &ast::RefinementType) -> Self {
         let pattern = refinement.inner_pattern().unwrap();
         let (mut fold, pattern_id) = self.fold_pattern(pattern);
         fold.parameters.push(pattern_id);
         fold
     }
 
-    fn fold_pattern(self, pattern: cst::Pattern) -> (Self, PatternId) {
+    fn fold_pattern(self, pattern: ast::Pattern) -> (Self, PatternId) {
         let (mut fold, pattern) = match pattern {
-            cst::Pattern::DeconstructorPattern(deconstructor) => {
+            ast::Pattern::DeconstructorPattern(deconstructor) => {
                 let subpatterns = deconstructor.pattern_list().unwrap().patterns();
                 let (fold, subpatterns) =
                     subpatterns.fold((self, Vec::new()), |(fold, mut subpatterns), pattern| {
@@ -782,7 +727,7 @@ impl BodyFold {
                     Pattern::Deconstructor(Path::lower(deconstructor.path().unwrap()), subpatterns),
                 )
             }
-            cst::Pattern::BindingPattern(pat) => {
+            ast::Pattern::BindingPattern(pat) => {
                 (self, Pattern::Bind(Name::lower(pat.name().unwrap())))
             }
         };
@@ -790,24 +735,24 @@ impl BodyFold {
         (fold, pattern_id)
     }
 
-    fn fold_expression(self, expression: cst::Expression) -> (Self, ExpressionId) {
+    fn fold_expression(self, expression: ast::Expression) -> (Self, ExpressionId) {
         match expression {
-            cst::Expression::Literal(literal) => self.fold_literal_expression(literal),
-            cst::Expression::PathExpression(path) => self.fold_path_expression(path),
-            cst::Expression::BlockExpression(block) => self.fold_block_expression(block),
-            cst::Expression::InfixExpression(infix) => self.fold_infix_expression(infix),
-            cst::Expression::PrefixExpression(prefix) => self.fold_prefix_expression(prefix),
-            cst::Expression::ParenthesisExpression(paren) => {
+            ast::Expression::Literal(literal) => self.fold_literal_expression(literal),
+            ast::Expression::PathExpression(path) => self.fold_path_expression(path),
+            ast::Expression::BlockExpression(block) => self.fold_block_expression(block),
+            ast::Expression::InfixExpression(infix) => self.fold_infix_expression(infix),
+            ast::Expression::PrefixExpression(prefix) => self.fold_prefix_expression(prefix),
+            ast::Expression::ParenthesisExpression(paren) => {
                 self.fold_expression(paren.inner_expression().unwrap())
             }
-            cst::Expression::CallExpression(call) => self.fold_call_expression(call),
-            cst::Expression::IfExpression(if_expr) => self.fold_if_expression(if_expr),
-            cst::Expression::MatchExpression(match_expr) => self.fold_match_expression(match_expr),
-            cst::Expression::NewExpression(new_expr) => self.fold_new_expression(new_expr),
+            ast::Expression::CallExpression(call) => self.fold_call_expression(call),
+            ast::Expression::IfExpression(if_expr) => self.fold_if_expression(if_expr),
+            ast::Expression::MatchExpression(match_expr) => self.fold_match_expression(match_expr),
+            ast::Expression::NewExpression(new_expr) => self.fold_new_expression(new_expr),
         }
     }
 
-    fn fold_block_expression(self, block: cst::BlockExpression) -> (Self, ExpressionId) {
+    fn fold_block_expression(self, block: ast::BlockExpression) -> (Self, ExpressionId) {
         let statement_list = block.statement_list().unwrap();
         let (fold, statements) = statement_list.statements().fold(
             (self, Vec::new()),
@@ -831,9 +776,9 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_statement(self, statement: cst::Statement) -> (BodyFold, Statement) {
+    fn fold_statement(self, statement: ast::Statement) -> (BodyFold, Statement) {
         match statement {
-            cst::Statement::Let(let_statement) => {
+            ast::Statement::Let(let_statement) => {
                 let pattern = let_statement
                     .pattern()
                     .expect("missing pattern on let statement");
@@ -844,7 +789,7 @@ impl BodyFold {
                 let (fold, expression_id) = fold.fold_expression(expression);
                 (fold, Statement::Let(pattern_id, expression_id))
             }
-            cst::Statement::Expression(expr_statement) => {
+            ast::Statement::Expression(expr_statement) => {
                 let expression = expr_statement
                     .expression()
                     .expect("missing expression on let statement");
@@ -854,7 +799,7 @@ impl BodyFold {
         }
     }
 
-    fn fold_infix_expression(self, infix: cst::InfixExpression) -> (Self, ExpressionId) {
+    fn fold_infix_expression(self, infix: ast::InfixExpression) -> (Self, ExpressionId) {
         let (fold, lhs) =
             self.fold_expression(infix.lhs().expect("missing lhs from infix expression"));
         let (mut fold, rhs) =
@@ -864,37 +809,37 @@ impl BodyFold {
             .operator()
             .expect("missing operator from infix expression")
         {
-            cst::BinaryOperator::Asterisk(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Mul),
-            cst::BinaryOperator::Plus(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Add),
-            cst::BinaryOperator::Minus(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Sub),
-            cst::BinaryOperator::Slash(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Div),
-            cst::BinaryOperator::Percent(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Rem),
-            cst::BinaryOperator::DoubleEquals(_) => {
+            ast::BinaryOperator::Asterisk(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Mul),
+            ast::BinaryOperator::Plus(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Add),
+            ast::BinaryOperator::Minus(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Sub),
+            ast::BinaryOperator::Slash(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Div),
+            ast::BinaryOperator::Percent(_) => BinaryOperator::Arithmetic(ArithmeticOperator::Rem),
+            ast::BinaryOperator::DoubleEquals(_) => {
                 BinaryOperator::Compare(CompareOperator::Equality { negated: false })
             }
-            cst::BinaryOperator::ExclamationEquals(_) => {
+            ast::BinaryOperator::ExclamationEquals(_) => {
                 BinaryOperator::Compare(CompareOperator::Equality { negated: true })
             }
-            cst::BinaryOperator::Less(_) => BinaryOperator::Compare(CompareOperator::Order {
+            ast::BinaryOperator::Less(_) => BinaryOperator::Compare(CompareOperator::Order {
                 ordering: Ordering::Less,
                 strict: true,
             }),
-            cst::BinaryOperator::LessEquals(_) => BinaryOperator::Compare(CompareOperator::Order {
+            ast::BinaryOperator::LessEquals(_) => BinaryOperator::Compare(CompareOperator::Order {
                 ordering: Ordering::Less,
                 strict: false,
             }),
-            cst::BinaryOperator::Greater(_) => BinaryOperator::Compare(CompareOperator::Order {
+            ast::BinaryOperator::Greater(_) => BinaryOperator::Compare(CompareOperator::Order {
                 ordering: Ordering::Greater,
                 strict: true,
             }),
-            cst::BinaryOperator::GreaterEquals(_) => {
+            ast::BinaryOperator::GreaterEquals(_) => {
                 BinaryOperator::Compare(CompareOperator::Order {
                     ordering: Ordering::Greater,
                     strict: false,
                 })
             }
-            cst::BinaryOperator::DoubleAmpersand(_) => BinaryOperator::Logic(LogicOperator::And),
-            cst::BinaryOperator::DoublePipe(_) => BinaryOperator::Logic(LogicOperator::Or),
+            ast::BinaryOperator::DoubleAmpersand(_) => BinaryOperator::Logic(LogicOperator::And),
+            ast::BinaryOperator::DoublePipe(_) => BinaryOperator::Logic(LogicOperator::Or),
         };
 
         let bin_expr = Expression::Binary(op, lhs, rhs);
@@ -902,7 +847,7 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_prefix_expression(self, prefix: cst::PrefixExpression) -> (Self, ExpressionId) {
+    fn fold_prefix_expression(self, prefix: ast::PrefixExpression) -> (Self, ExpressionId) {
         let (mut fold, inner) = self.fold_expression(
             prefix
                 .inner()
@@ -913,10 +858,10 @@ impl BodyFold {
             .operator()
             .expect("missing operator from infix expression")
         {
-            cst::UnaryOperator::Minus(_) => UnaryOperator::Minus,
-            cst::UnaryOperator::Exclamation(_) => UnaryOperator::Negation,
-            cst::UnaryOperator::Asterisk(_) => UnaryOperator::Dereference,
-            cst::UnaryOperator::Ampersand(_) => UnaryOperator::Reference,
+            ast::UnaryOperator::Minus(_) => UnaryOperator::Minus,
+            ast::UnaryOperator::Exclamation(_) => UnaryOperator::Negation,
+            ast::UnaryOperator::Asterisk(_) => UnaryOperator::Dereference,
+            ast::UnaryOperator::Ampersand(_) => UnaryOperator::Reference,
         };
 
         let unary_expr = Expression::Unary(op, inner);
@@ -924,7 +869,7 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_if_expression(self, if_expr: cst::IfExpression) -> (Self, ExpressionId) {
+    fn fold_if_expression(self, if_expr: ast::IfExpression) -> (Self, ExpressionId) {
         let (fold, condition) = self.fold_expression(if_expr.condition().unwrap());
         let (fold, then_branch) = fold.fold_expression(if_expr.then_branch().unwrap());
         let (mut fold, else_branch) = fold.fold_expression(if_expr.else_branch().unwrap());
@@ -938,7 +883,7 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_match_expression(self, match_expr: cst::MatchExpression) -> (Self, ExpressionId) {
+    fn fold_match_expression(self, match_expr: ast::MatchExpression) -> (Self, ExpressionId) {
         let (fold, matchee) = self.fold_expression(match_expr.matchee().unwrap());
 
         let (mut fold, case_list) = match_expr.case_list().unwrap().cases().fold(
@@ -956,7 +901,7 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_call_expression(self, call: cst::CallExpression) -> (Self, ExpressionId) {
+    fn fold_call_expression(self, call: ast::CallExpression) -> (Self, ExpressionId) {
         let (fold, callee) =
             self.fold_expression(call.callee().expect("missing callee from call expression"));
 
@@ -978,15 +923,15 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_path_expression(mut self, path: cst::PathExpression) -> (Self, ExpressionId) {
+    fn fold_path_expression(mut self, path: ast::PathExpression) -> (Self, ExpressionId) {
         let path_expr = Expression::Path(Path::lower(path.path().unwrap()));
         let id = self.expressions.alloc(path_expr);
         (self, id)
     }
 
-    fn fold_literal_expression(mut self, literal: cst::Literal) -> (Self, ExpressionId) {
+    fn fold_literal_expression(mut self, literal: ast::Literal) -> (Self, ExpressionId) {
         let literal = match literal.literal_kind() {
-            cst::TokenLiteral::Integer(integer) => {
+            ast::TokenLiteral::Integer(integer) => {
                 let (radical, suffix) = integer.radical_and_suffix();
 
                 let kind = match suffix {
@@ -1016,9 +961,9 @@ impl BodyFold {
 
                 Literal::Integer(value, kind)
             }
-            cst::TokenLiteral::Boolean(bool_token) => match bool_token {
-                cst::Boolean::True(_) => Literal::Bool(true),
-                cst::Boolean::False(_) => Literal::Bool(false),
+            ast::TokenLiteral::Boolean(bool_token) => match bool_token {
+                ast::Boolean::True(_) => Literal::Bool(true),
+                ast::Boolean::False(_) => Literal::Bool(false),
             },
         };
 
@@ -1027,7 +972,7 @@ impl BodyFold {
         (self, id)
     }
 
-    fn fold_new_expression(self, new_expr: cst::NewExpression) -> (Self, Idx<Expression>) {
+    fn fold_new_expression(self, new_expr: ast::NewExpression) -> (Self, Idx<Expression>) {
         let (mut fold, inner_id) = self.fold_call_expression(new_expr.call_expression().unwrap());
         let new_expr = Expression::New(inner_id);
         let id = fold.expressions.alloc(new_expr);
@@ -1044,12 +989,12 @@ pub enum Pattern {
 }
 
 impl Pattern {
-    pub fn lower(pattern: cst::Pattern) -> Self {
+    pub fn lower(pattern: ast::Pattern) -> Self {
         match pattern {
-            cst::Pattern::DeconstructorPattern(pat) => {
+            ast::Pattern::DeconstructorPattern(pat) => {
                 Self::Deconstructor(Path::lower(pat.path().unwrap()), Vec::new())
             }
-            cst::Pattern::BindingPattern(pat) => Self::Bind(Name::lower(pat.name().unwrap())),
+            ast::Pattern::BindingPattern(pat) => Self::Bind(Name::lower(pat.name().unwrap())),
         }
     }
 }
@@ -1142,13 +1087,13 @@ pub struct Name {
 }
 
 impl Name {
-    fn lower(name: cst::Name) -> Self {
+    fn lower(name: ast::Name) -> Self {
         Name {
             id: name.identifier().text().into(),
         }
     }
 
-    fn lower_nameref(name: cst::NameReference) -> Self {
+    fn lower_nameref(name: ast::NameReference) -> Self {
         Name {
             id: name.identifier().text().into(),
         }
@@ -1167,12 +1112,12 @@ pub struct Path {
 }
 
 impl Path {
-    fn lower(path: cst::Path) -> Self {
+    fn lower(path: ast::Path) -> Self {
         let segments = Self::collect_segments(Vec::new(), path);
         Self { segments }
     }
 
-    fn collect_segments(mut segments: Vec<Name>, path: cst::Path) -> Vec<Name> {
+    fn collect_segments(mut segments: Vec<Name>, path: ast::Path) -> Vec<Name> {
         let segment = path.path_segment().unwrap();
         if let Some(path) = path.path() {
             let mut segments = Self::collect_segments(segments, path);
@@ -1195,19 +1140,19 @@ pub enum TypeReference {
 }
 
 impl TypeReference {
-    fn lower(ty: cst::Type) -> Self {
+    fn lower(ty: ast::Type) -> Self {
         match ty {
-            cst::Type::PathType(path_ty) => Self::Path(Path::lower(path_ty.path().unwrap())),
-            cst::Type::PointerType(ptr_ty) => {
+            ast::Type::PathType(path_ty) => Self::Path(Path::lower(path_ty.path().unwrap())),
+            ast::Type::PointerType(ptr_ty) => {
                 Self::Pointer(Box::new(Self::lower(ptr_ty.inner_type().unwrap())))
             }
-            cst::Type::RefinementType(refinement_ty) => Self::Refinement(
+            ast::Type::RefinementType(refinement_ty) => Self::Refinement(
                 Box::new(Self::lower(refinement_ty.inner_type().unwrap())),
                 Name::lower(match refinement_ty.inner_pattern().unwrap() {
-                    cst::Pattern::DeconstructorPattern(_) => todo!(),
-                    cst::Pattern::BindingPattern(binding) => binding.name().unwrap(),
+                    ast::Pattern::DeconstructorPattern(_) => todo!(),
+                    ast::Pattern::BindingPattern(binding) => binding.name().unwrap(),
                 }),
-                Predicate::lower(refinement_ty.refinement_expression().unwrap()),
+                Predicate::lower(refinement_ty.predicate().unwrap()),
             ),
         }
     }
@@ -1769,7 +1714,7 @@ impl<'s> InferenceResultFold<'s> {
                             Box::new(Predicate::Boolean(*value)),
                         );
                         Type::Refinement(Box::new(inner), name, predicate)
-                    },
+                    }
                 };
                 (self, ty)
             }

@@ -20,7 +20,7 @@ fn sum_vec(a: Vec, b: Vec) -> Vec {
     match a {
         Vec::Vec(a1, a2) => match b {
             Vec::Vec(b1, b2) => Vec::Vec(a1 + b1, a2 + b2),
-        },
+        }
     }
 }
 
@@ -30,7 +30,7 @@ fn multiply_mat_vec(mat: Mat, vec: Vec) -> Vec {
             Vec::Vec(x1, x2) => sum_vec(
                 multiply_scalar_vec(x1, lhs1),
                 multiply_scalar_vec(x2, lhs2)
-            ),
-        },
+            )
+        }
     }
 }
