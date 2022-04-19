@@ -1,194 +1,28 @@
+mod ast_node_map;
+mod definitions_db;
+mod definitions_map;
+mod item_tree;
+pub mod refinement;
+mod source_db;
+
+use std::{collections::HashMap, fmt::Debug};
+
+use ast_node_map::AstNodeMap;
+pub use definitions_db::{DefinitionsDatabase, DefinitionsDatabaseStorage};
+pub use definitions_map::{
+    BuiltinInteger, BuiltinType, DefinitionsMap, FunctionLocationId, TypeLocationId,
+    TypeNamespaceItem, ValueConstructor, ValueConstructorId, ValueNamespaceItem,
+};
+pub use definitions_map::{InternDatabase, InternDatabaseStorage};
+use item_tree::{FunctionDefinition, TypeDefinition};
 use la_arena::{Arena, ArenaMap, Idx};
 use refinement::Predicate;
 use smol_str::SmolStr;
-use std::{collections::HashMap, fmt::Debug};
+pub use source_db::{SourceDatabase, SourceDatabaseStorage};
 use syntax::ast::{self, AstToken};
-
-mod source_db;
-pub mod refinement;
-pub use source_db::{AstNodeId, AstNodeMap, SourceDatabase, SourceDatabaseStorage};
 
 pub trait Upcast<T: ?Sized> {
     fn upcast(&self) -> &T;
-}
-
-#[salsa::query_group(InternDatabaseStorage)]
-pub trait InternDatabase {
-    #[salsa::interned]
-    fn intern_function(&self, loc: FunctionLocation) -> FunctionLocationId;
-
-    #[salsa::interned]
-    fn intern_type(&self, loc: TypeLocation) -> TypeLocationId;
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct FunctionLocationId(salsa::InternId);
-
-impl salsa::InternKey for FunctionLocationId {
-    fn from_intern_id(id: salsa::InternId) -> Self {
-        Self(id)
-    }
-
-    fn as_intern_id(&self) -> salsa::InternId {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeLocationId(salsa::InternId);
-
-impl salsa::InternKey for TypeLocationId {
-    fn from_intern_id(id: salsa::InternId) -> Self {
-        Self(id)
-    }
-
-    fn as_intern_id(&self) -> salsa::InternId {
-        self.0
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FunctionLocation {
-    pub id: FunctionDefinitionId,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeLocation {
-    pub id: TypeDefinitionId,
-}
-
-#[salsa::query_group(DefinitionsDatabaseStorage)]
-pub trait DefinitionsDatabase:
-    SourceDatabase + InternDatabase + Upcast<dyn SourceDatabase>
-{
-    fn source_file_item_tree(&self) -> ItemTree;
-
-    fn source_file_definitions_map(&self) -> DefinitionsMap;
-
-    fn body_of_definition(&self, def: FunctionLocationId) -> Body;
-
-    fn expression_scope_map(&self, def: FunctionLocationId) -> ExpressionScopeMap;
-
-    fn function_definition_data(&self, id: FunctionLocationId) -> FunctionDefinitionData;
-
-    fn type_definition_data(&self, id: TypeLocationId) -> TypeDefinitionData;
-}
-
-fn source_file_item_tree(def_db: &dyn DefinitionsDatabase) -> ItemTree {
-    let parse = def_db.source_file_parse();
-    let ast_node_map = def_db.source_file_ast_node_map();
-
-    let source = parse.ast_node();
-
-    let functions = source
-        .module_items()
-        .flat_map(|item| match item {
-            ast::ModuleItem::FunctionDefinition(f) => {
-                Some(FunctionDefinition::lower(&ast_node_map, f))
-            }
-            _ => None,
-        })
-        .collect();
-
-    let types = source
-        .module_items()
-        .flat_map(|item| match item {
-            ast::ModuleItem::TypeDefinition(t) => Some(TypeDefinition::lower(&ast_node_map, t)),
-            _ => None,
-        })
-        .collect();
-
-    ItemTree { functions, types }
-}
-
-fn source_file_definitions_map(def_db: &dyn DefinitionsDatabase) -> DefinitionsMap {
-    let item_tree = def_db.source_file_item_tree();
-
-    let mut types = HashMap::new();
-    let mut values = HashMap::new();
-    let mut definitions = Vec::new();
-
-    for (f_id, function) in item_tree.functions.iter() {
-        let function_location = FunctionLocation { id: f_id };
-        let function_location_id = def_db.intern_function(function_location);
-        let location_id = LocationId::FunctionLocationId(function_location_id);
-
-        definitions.push(location_id.clone());
-        values.insert(function.name.clone(), location_id);
-    }
-
-    for (t_id, type_def) in item_tree.types.iter() {
-        let type_location = TypeLocation { id: t_id };
-        let type_location_id = def_db.intern_type(type_location);
-        let location_id = LocationId::TypeLocationId(type_location_id);
-
-        definitions.push(location_id.clone());
-        types.insert(type_def.name.clone(), location_id);
-    }
-
-    let item_scope = ItemScope {
-        types,
-        values,
-        definitions,
-    };
-
-    DefinitionsMap { item_scope }
-}
-
-fn body_of_definition(db: &dyn DefinitionsDatabase, id: FunctionLocationId) -> Body {
-    let source_file = db.source_file_parse();
-    let ast_node_map = db.source_file_ast_node_map();
-    let package_defs = db.source_file_item_tree();
-    let location = db.lookup_intern_function(id);
-
-    let fun_def = package_defs.function(location);
-    let source = ast_node_map.get(&fun_def.ast_node_id);
-    let function_cst_node = source.to_node(&source_file.syntax_node());
-
-    Body::lower(function_cst_node)
-}
-
-fn expression_scope_map(
-    db: &dyn DefinitionsDatabase,
-    def: FunctionLocationId,
-) -> ExpressionScopeMap {
-    let body = db.body_of_definition(def);
-    ExpressionScopeMap::new(&body)
-}
-
-fn function_definition_data(
-    db: &dyn DefinitionsDatabase,
-    id: FunctionLocationId,
-) -> FunctionDefinitionData {
-    let loc = db.lookup_intern_function(id);
-    let item_tree = db.source_file_item_tree();
-    let FunctionDefinition {
-        name,
-        parameter_types,
-        return_type,
-        ..
-    } = item_tree.functions[loc.id].clone();
-
-    FunctionDefinitionData {
-        name,
-        parameter_types,
-        return_type,
-    }
-}
-
-fn type_definition_data(db: &dyn DefinitionsDatabase, id: TypeLocationId) -> TypeDefinitionData {
-    let loc = db.lookup_intern_type(id);
-    let item_tree = db.source_file_item_tree();
-    let TypeDefinition {
-        name,
-        value_constructors,
-        ..
-    } = item_tree.types[loc.id].clone();
-
-    TypeDefinitionData {
-        name,
-        value_constructors,
-    }
 }
 
 #[salsa::query_group(HirDatabaseStorage)]
@@ -303,160 +137,6 @@ fn infer_body_expression_types(
     InferenceResult::new(db, function_id)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ItemTree {
-    functions: Arena<FunctionDefinition>,
-    types: Arena<TypeDefinition>,
-}
-
-impl ItemTree {
-    pub(crate) fn function(&self, location: FunctionLocation) -> &FunctionDefinition {
-        &self.functions[location.id]
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DefinitionsMap {
-    pub item_scope: ItemScope,
-}
-
-impl DefinitionsMap {
-    fn resolve_path(&self, db: &dyn DefinitionsDatabase, path: &Path) -> NamespaceResolution {
-        path.segments
-            .first()
-            .map(|name| self.resolve_name(name))
-            .and_then(|resolution| {
-                path.segments
-                    .iter()
-                    .skip(1)
-                    .try_fold(resolution, |resolution, name| {
-                        resolution
-                            .in_type_namespace()
-                            .map(|typeable_item| match typeable_item {
-                                TypeNamespaceItem::TypeDefinition(type_id) => {
-                                    let ty_data = db.type_definition_data(type_id);
-                                    let value = ty_data
-                                        .value_constructors
-                                        .iter()
-                                        .find(|(_, constructor)| constructor.name == *name)
-                                        .map(|(id, _)| {
-                                            ValueNamespaceItem::ValueConstructor(
-                                                ValueConstructorId {
-                                                    parrent_id: type_id,
-                                                    id,
-                                                },
-                                            )
-                                        });
-
-                                    NamespaceResolution::new(None, value)
-                                }
-                                TypeNamespaceItem::Builtin(_) => todo!(),
-                            })
-                    })
-            })
-            .unwrap_or_default()
-    }
-
-    fn resolve_name(&self, name: &Name) -> NamespaceResolution {
-        let builtin_type = BUILTIN_SCOPE
-            .iter()
-            .find_map(|(builtin_name, builtin_type)| match builtin_name == name {
-                true => Some((*builtin_type).into()),
-                false => None,
-            });
-        self.item_scope
-            .get(name)
-            .or(NamespaceResolution::new(builtin_type, None))
-    }
-}
-
-#[derive(Default)]
-struct NamespaceResolution {
-    type_resolution: Option<TypeNamespaceItem>,
-    value_resolution: Option<ValueNamespaceItem>,
-}
-
-impl NamespaceResolution {
-    fn new(
-        type_resolution: Option<TypeNamespaceItem>,
-        value_resolution: Option<ValueNamespaceItem>,
-    ) -> Self {
-        Self {
-            type_resolution,
-            value_resolution,
-        }
-    }
-
-    fn in_type_namespace(self) -> Option<TypeNamespaceItem> {
-        self.type_resolution
-    }
-
-    fn in_value_namespace(self) -> Option<ValueNamespaceItem> {
-        self.value_resolution
-    }
-
-    fn or(self, resolution: Self) -> Self {
-        Self {
-            type_resolution: self.type_resolution.or(resolution.type_resolution),
-            value_resolution: self.value_resolution.or(resolution.value_resolution),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ItemScope {
-    pub types: HashMap<Name, LocationId>,
-    pub values: HashMap<Name, LocationId>,
-    pub definitions: Vec<LocationId>,
-}
-
-impl ItemScope {
-    fn get(&self, name: &Name) -> NamespaceResolution {
-        NamespaceResolution::new(
-            self.types.get(name).and_then(|loc| match loc {
-                LocationId::TypeLocationId(id) => Some(TypeNamespaceItem::TypeDefinition(*id)),
-                _ => None,
-            }),
-            self.values.get(name).and_then(|loc| match loc {
-                LocationId::FunctionLocationId(id) => Some(ValueNamespaceItem::Function(*id)),
-                _ => None,
-            }),
-        )
-    }
-
-    pub fn iter_type_locations(&self) -> impl Iterator<Item = &TypeLocationId> {
-        let mut iter = self.definitions.iter();
-        std::iter::from_fn(move || {
-            while let Some(def) = iter.next() {
-                match def {
-                    LocationId::TypeLocationId(id) => return Some(id),
-                    _ => continue,
-                }
-            }
-            None
-        })
-    }
-
-    pub fn iter_function_locations(&self) -> impl Iterator<Item = &FunctionLocationId> {
-        let mut iter = self.definitions.iter();
-        std::iter::from_fn(move || {
-            while let Some(def) = iter.next() {
-                match def {
-                    LocationId::FunctionLocationId(id) => return Some(id),
-                    _ => continue,
-                }
-            }
-            None
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LocationId {
-    FunctionLocationId(FunctionLocationId),
-    TypeLocationId(TypeLocationId),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeableDefinition {
     Type(TypeLocationId),
@@ -526,13 +206,6 @@ pub enum IntegerKind {
 pub type TypeDefinitionId = Idx<TypeDefinition>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypeDefinition {
-    pub name: Name,
-    pub value_constructors: Arena<ValueConstructor>,
-    pub ast_node_id: AstNodeId<ast::TypeDefinition>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeDefinitionData {
     pub name: Name,
     pub value_constructors: Arena<ValueConstructor>,
@@ -557,42 +230,6 @@ impl TypeDefinition {
             ast_node_id: ast_node_map.ast_id(&ty),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ValueConstructorId {
-    pub parrent_id: TypeLocationId,
-    pub id: Idx<ValueConstructor>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValueConstructor {
-    pub name: Name,
-    pub parameters: Vec<TypeReference>,
-}
-
-impl ValueConstructor {
-    fn lower(ctor: ast::ValueConstructor) -> Self {
-        ValueConstructor {
-            name: Name::lower(ctor.name().unwrap()),
-            parameters: ctor
-                .constructor_parameter_list()
-                .unwrap()
-                .types()
-                .map(TypeReference::lower)
-                .collect(),
-        }
-    }
-}
-
-pub type FunctionDefinitionId = Idx<FunctionDefinition>;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionDefinition {
-    pub name: Name,
-    pub parameter_types: Vec<TypeReference>,
-    pub return_type: TypeReference,
-    pub ast_node_id: AstNodeId<ast::FunctionDefinition>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1263,11 +900,6 @@ impl Resolver {
     }
 }
 
-pub enum TypeNamespaceItem {
-    TypeDefinition(TypeLocationId),
-    Builtin(BuiltinType),
-}
-
 impl From<TypeLocationId> for TypeNamespaceItem {
     fn from(type_location: TypeLocationId) -> Self {
         Self::TypeDefinition(type_location)
@@ -1280,14 +912,6 @@ impl From<BuiltinType> for TypeNamespaceItem {
     }
 }
 
-#[derive(Debug)]
-pub enum ValueNamespaceItem {
-    Function(FunctionLocationId),
-    ValueConstructor(ValueConstructorId),
-    /// local binding in expression body
-    LocalBinding(PatternId),
-}
-
 pub enum Scope {
     Module {
         definitions_map: DefinitionsMap,
@@ -1296,18 +920,6 @@ pub enum Scope {
         scope_map: ExpressionScopeMap,
         scope_id: ExpressionScopeId,
     },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BuiltinType {
-    Integer(BuiltinInteger),
-    Boolean,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BuiltinInteger {
-    I32,
-    I64,
 }
 
 static BUILTIN_SCOPE: &[(Name, BuiltinType)] = &[
