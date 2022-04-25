@@ -1,86 +1,47 @@
-use std::collections::HashMap;
-
 use crate::{
-    definitions_map::{
-        DefinitionsMap, FunctionLocation, FunctionLocationId, InternDatabase, ItemScope,
-        LocationId, TypeLocation, TypeLocationId,
-    },
-    item_tree::{FunctionDefinition, Item, ItemTree, TypeDefinition},
-    Body, ExpressionScopeMap, FunctionDefinitionData, SourceDatabase, TypeDefinitionData, Upcast,
+    definition_map::{DefinitionMap, FunctionDefinitionId, Interner, TypeDefinitionId},
+    item::{FunctionDefinition, TypeDefinition},
+    item_tree::ItemTree,
+    term::Body,
+    ExpressionScopeMap, FunctionDefinitionData, SourceDatabase, TypeDefinitionData, Upcast,
 };
 
 #[salsa::query_group(DefinitionsDatabaseStorage)]
 pub trait DefinitionsDatabase:
-    SourceDatabase + InternDatabase + Upcast<dyn SourceDatabase>
+    SourceDatabase + Interner + Upcast<dyn SourceDatabase> + Upcast<dyn Interner>
 {
     fn source_file_item_tree(&self) -> ItemTree;
 
-    fn source_file_definitions_map(&self) -> DefinitionsMap;
+    fn source_file_definitions_map(&self) -> DefinitionMap;
 
-    fn body_of_definition(&self, def: FunctionLocationId) -> Body;
+    fn body_of_definition(&self, def: FunctionDefinitionId) -> Body;
 
-    fn expression_scope_map(&self, def: FunctionLocationId) -> ExpressionScopeMap;
+    fn expression_scope_map(&self, def: FunctionDefinitionId) -> ExpressionScopeMap;
 
-    fn function_definition_data(&self, id: FunctionLocationId) -> FunctionDefinitionData;
+    fn function_definition_data(&self, id: FunctionDefinitionId) -> FunctionDefinitionData;
 
-    fn type_definition_data(&self, id: TypeLocationId) -> TypeDefinitionData;
+    fn type_definition_data(&self, id: TypeDefinitionId) -> TypeDefinitionData;
 }
 
 fn source_file_item_tree(def_db: &dyn DefinitionsDatabase) -> ItemTree {
     let parse = def_db.source_file_parse();
     let ast_node_map = def_db.source_file_ast_node_map();
-
-    let source = parse.ast_node();
-
-    ItemTree::new(source, ast_node_map)
+    ItemTree::new(parse.ast_node(), ast_node_map)
 }
 
-fn source_file_definitions_map(def_db: &dyn DefinitionsDatabase) -> DefinitionsMap {
+fn source_file_definitions_map(def_db: &dyn DefinitionsDatabase) -> DefinitionMap {
     let item_tree = def_db.source_file_item_tree();
-
-    let mut types = HashMap::new();
-    let mut values = HashMap::new();
-    let mut definitions = Vec::new();
-
-    for item in item_tree.root_items() {
-        match item {
-            Item::Function(id) => {
-                let function = item_tree.get(*id);
-                let function_location = FunctionLocation { id: *id };
-                let function_location_id = def_db.intern_function(function_location);
-                let location_id = LocationId::FunctionLocationId(function_location_id);
-
-                definitions.push(location_id.clone());
-                values.insert(function.name.clone(), location_id);
-            }
-            Item::Type(id) => {
-                let ty = item_tree.get(*id);
-                let type_location = TypeLocation { id: *id };
-                let type_location_id = def_db.intern_type(type_location);
-                let location_id = LocationId::TypeLocationId(type_location_id);
-
-                definitions.push(location_id.clone());
-                types.insert(ty.name.clone(), location_id);
-            }
-        }
-    }
-
-    let item_scope = ItemScope {
-        types,
-        values,
-        definitions,
-    };
-
-    DefinitionsMap { item_scope }
+    let interner = def_db.upcast();
+    DefinitionMap::new(item_tree, interner)
 }
 
-fn body_of_definition(db: &dyn DefinitionsDatabase, id: FunctionLocationId) -> Body {
+fn body_of_definition(db: &dyn DefinitionsDatabase, id: FunctionDefinitionId) -> Body {
     let source_file = db.source_file_parse();
     let ast_node_map = db.source_file_ast_node_map();
     let item_tree = db.source_file_item_tree();
     let location = db.lookup_intern_function(id);
 
-    let fun_def = item_tree.get(location.id);
+    let fun_def = item_tree.get(location.item_id);
     let source = ast_node_map.get(&fun_def.ast_node_id);
     let function_cst_node = source.to_node(&source_file.syntax_node());
 
@@ -89,7 +50,7 @@ fn body_of_definition(db: &dyn DefinitionsDatabase, id: FunctionLocationId) -> B
 
 fn expression_scope_map(
     db: &dyn DefinitionsDatabase,
-    def: FunctionLocationId,
+    def: FunctionDefinitionId,
 ) -> ExpressionScopeMap {
     let body = db.body_of_definition(def);
     ExpressionScopeMap::new(&body)
@@ -97,7 +58,7 @@ fn expression_scope_map(
 
 fn function_definition_data(
     db: &dyn DefinitionsDatabase,
-    id: FunctionLocationId,
+    id: FunctionDefinitionId,
 ) -> FunctionDefinitionData {
     let loc = db.lookup_intern_function(id);
     let item_tree = db.source_file_item_tree();
@@ -106,7 +67,7 @@ fn function_definition_data(
         parameter_types,
         return_type,
         ..
-    } = item_tree.get(loc.id).clone();
+    } = item_tree.get(loc.item_id).clone();
 
     FunctionDefinitionData {
         name,
@@ -115,14 +76,14 @@ fn function_definition_data(
     }
 }
 
-fn type_definition_data(db: &dyn DefinitionsDatabase, id: TypeLocationId) -> TypeDefinitionData {
+fn type_definition_data(db: &dyn DefinitionsDatabase, id: TypeDefinitionId) -> TypeDefinitionData {
     let loc = db.lookup_intern_type(id);
     let item_tree = db.source_file_item_tree();
     let TypeDefinition {
         name,
         value_constructors,
         ..
-    } = item_tree.get(loc.id).clone();
+    } = item_tree.get(loc.item_id).clone();
 
     TypeDefinitionData {
         name,
