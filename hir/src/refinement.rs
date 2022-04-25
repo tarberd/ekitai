@@ -1,4 +1,7 @@
-use crate::{ArithmeticOperator, BinaryOperator, CompareOperator, LogicOperator, Name, Ordering};
+use crate::{
+    term::{ArithmeticOperator, LogicOperator, Ordering},
+    BinaryOperator, CompareOperator, Name,
+};
 use syntax::ast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,7 +40,7 @@ impl Predicate {
                 }),
             },
             ast::Expression::PathExpression(path) => {
-                let name = Name::lower_nameref(
+                let name = Name::from_ast_nameref(
                     path.path()
                         .unwrap()
                         .path_segment()

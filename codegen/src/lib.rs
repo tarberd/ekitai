@@ -1,9 +1,12 @@
-use by_address::ByAddress;
-use hir::{
-    BinaryOperator, Body, CallableDefinitionId, ExpressionId, FunctionLocationId, HirDatabase,
-    InferenceResult, Literal, Name, PatternId, Resolver, ScalarType, SourceDatabase, Statement,
-    Type, TypeLocationId, UnaryOperator, Upcast, ValueConstructorId,
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    fmt::Display,
+    iter::FromIterator,
+    sync::Arc,
 };
+
+use by_address::ByAddress;
 use inkwell::{
     attributes::{Attribute, AttributeLoc},
     basic_block::BasicBlock,
@@ -17,12 +20,16 @@ use inkwell::{
     values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, IntPredicate, OptimizationLevel,
 };
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
-    fmt::Display,
-    iter::FromIterator,
-    sync::Arc,
+
+use hir::{
+    name::Name,
+    term::{
+        ArithmeticOperator, BinaryOperator, Body, CompareOperator, TermId, Literal,
+        LogicOperator, Ordering, Pattern, PatternId, Statement, Term, UnaryOperator,
+    },
+    CallableDefinitionId, FunctionDefinitionId, HirDatabase, InferenceResult, IntegerKind,
+    Resolver, ScalarType, SourceDatabase, Type, TypeDefinitionId, Upcast, ValueConstructorId,
+    ValueNamespaceItem,
 };
 
 #[salsa::query_group(CodeGenDatabaseStorage)]
@@ -65,7 +72,7 @@ fn target_machine(db: &dyn CodeGenDatabase) -> ByAddress<Arc<TargetMachine>> {
 
 #[salsa::database(
     hir::SourceDatabaseStorage,
-    hir::InternDatabaseStorage,
+    hir::InternerStorage,
     hir::DefinitionsDatabaseStorage,
     hir::HirDatabaseStorage,
     CodeGenDatabaseStorage
@@ -77,6 +84,12 @@ pub struct Database {
 
 impl Upcast<dyn hir::SourceDatabase> for Database {
     fn upcast(&self) -> &(dyn hir::SourceDatabase + 'static) {
+        &*self
+    }
+}
+
+impl Upcast<dyn hir::Interner> for Database {
+    fn upcast(&self) -> &(dyn hir::Interner + 'static) {
         &*self
     }
 }
@@ -250,7 +263,7 @@ pub struct CodeGenTypeCache<'db, 'context> {
     db: &'db dyn CodeGenDatabase,
     context: &'context Context,
     target_data: TargetData,
-    adt_map: RefCell<HashMap<TypeLocationId, (StructType<'context>, TypeInfo<'context>)>>,
+    adt_map: RefCell<HashMap<TypeDefinitionId, (StructType<'context>, TypeInfo<'context>)>>,
     adt_variant_map: RefCell<HashMap<ValueConstructorId, StructType<'context>>>,
 }
 
@@ -298,15 +311,18 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
         &self.target_data
     }
 
-    fn adt_struct_info(&self, ty_loc_id: TypeLocationId) -> TypeInfo<'context> {
+    fn adt_struct_info(&self, ty_loc_id: TypeDefinitionId) -> TypeInfo<'context> {
         self.adt_struct(ty_loc_id).1
     }
 
-    fn adt_struct_type(&self, ty_loc_id: TypeLocationId) -> StructType<'context> {
+    fn adt_struct_type(&self, ty_loc_id: TypeDefinitionId) -> StructType<'context> {
         self.adt_struct(ty_loc_id).0
     }
 
-    fn adt_struct(&self, ty_loc_id: TypeLocationId) -> (StructType<'context>, TypeInfo<'context>) {
+    fn adt_struct(
+        &self,
+        ty_loc_id: TypeDefinitionId,
+    ) -> (StructType<'context>, TypeInfo<'context>) {
         if let Some(value) = self.adt_map.borrow().get(&ty_loc_id) {
             return value.clone();
         };
@@ -339,7 +355,7 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
             .value_constructors
             .iter()
             .map(|(id, _)| ValueConstructorId {
-                parrent_id: ty_loc_id,
+                type_definition_id: ty_loc_id,
                 id,
             })
             .collect::<Vec<_>>();
@@ -388,7 +404,9 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
             .map(|ty| self.llvm_type(ty))
             .collect::<Vec<_>>();
 
-        let ty_data = self.db.type_definition_data(constructor_id.parrent_id);
+        let ty_data = self
+            .db
+            .type_definition_data(constructor_id.type_definition_id);
         let variant_data = ty_data.value_constructor(constructor_id.id);
 
         let opaque = self
@@ -441,7 +459,7 @@ impl<'db, 'context, 'type_cache> CodeGenFunctionInfoCache<'db, 'context, 'type_c
 
     pub(crate) fn llvm_function_type(
         &self,
-        function_id: &FunctionLocationId,
+        function_id: &FunctionDefinitionId,
     ) -> FunctionType<'context> {
         let function_info = self.function_info(function_id);
         let function_signature = self.db.callable_definition_signature((*function_id).into());
@@ -486,7 +504,7 @@ impl<'db, 'context, 'type_cache> CodeGenFunctionInfoCache<'db, 'context, 'type_c
         }
     }
 
-    pub(crate) fn function_info(&self, function_id: &FunctionLocationId) -> FunctionInfo {
+    pub(crate) fn function_info(&self, function_id: &FunctionDefinitionId) -> FunctionInfo {
         let free_integer_registers = 6;
         let function_signature = self.db.callable_definition_signature((*function_id).into());
         let return_bitsize = self.type_cache.bit_size(&function_signature.return_type);
@@ -560,7 +578,7 @@ struct CodeGenFunctionValueCache<'db, 'context, 'module, 'type_cache, 'function_
     module: &'module Module<'context>,
     type_cache: &'type_cache CodeGenTypeCache<'db, 'context>,
     function_info_cache: &'function_info_cache CodeGenFunctionInfoCache<'db, 'context, 'type_cache>,
-    function_value_map: RefCell<HashMap<FunctionLocationId, FunctionValue<'context>>>,
+    function_value_map: RefCell<HashMap<FunctionDefinitionId, FunctionValue<'context>>>,
 }
 
 impl<'db, 'context, 'module, 'type_cache, 'function_info_cache>
@@ -587,7 +605,7 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache>
         }
     }
 
-    fn llvm_function_value(&self, function_id: &FunctionLocationId) -> FunctionValue<'context> {
+    fn llvm_function_value(&self, function_id: &FunctionDefinitionId) -> FunctionValue<'context> {
         if let Some(function_value) = self.function_value_map.borrow().get(function_id) {
             return *function_value;
         }
@@ -709,7 +727,7 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
         }
     }
 
-    pub(crate) fn build_function_body(&self, function_id: &FunctionLocationId) {
+    pub(crate) fn build_function_body(&self, function_id: &FunctionDefinitionId) {
         let llvm_function_value = self.function_value_cache.llvm_function_value(function_id);
         let llvm_body = self.context.append_basic_block(llvm_function_value, "");
         let builder = self.context.create_builder();
@@ -748,8 +766,8 @@ impl<'db, 'context, 'module, 'type_cache, 'function_info_cache, 'function_value_
             .map(|(pattern_id, ((parameter, parameter_kind), param_ty))| {
                 let pattern = &body.patterns[*pattern_id];
                 match pattern {
-                    hir::Pattern::Deconstructor(_, _) => todo!("Unsing unsuported path pattern"),
-                    hir::Pattern::Bind(name) => {
+                    Pattern::Deconstructor(_, _) => todo!("Unsing unsuported path pattern"),
+                    Pattern::Bind(name) => {
                         parameter.set_name(&name.id);
                         let binding_value = match parameter_kind {
                             ValueKind::Indirect => Value {
@@ -1063,7 +1081,7 @@ pub fn build_assembly_ir(db: &dyn CodeGenDatabase) {
     );
 
     let def_map = db.source_file_definitions_map();
-    for function_id in def_map.item_scope.iter_function_locations() {
+    for function_id in def_map.root_module_item_scope().iter_function_locations() {
         function_body_builder.build_function_body(function_id)
     }
 
@@ -1096,7 +1114,7 @@ struct ExpressionLowerer<
         'type_cache,
         'function_info_cache,
     >,
-    function_id: FunctionLocationId,
+    function_id: FunctionDefinitionId,
     body: Body,
     binding_stack: RefCell<LocalBindingStack<'context>>,
     inference: InferenceResult,
@@ -1138,7 +1156,7 @@ impl<
             'type_cache,
             'function_info_cache,
         >,
-        function_id: FunctionLocationId,
+        function_id: FunctionDefinitionId,
         binding_stack: LocalBindingStack<'context>,
     ) -> Self {
         Self {
@@ -1176,22 +1194,22 @@ impl<
     pub fn fold_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        expr_id: ExpressionId,
+        expr_id: TermId,
     ) -> Option<Value<'context>> {
         let expr = &self.body.expressions[expr_id];
         match expr {
-            hir::Expression::Block {
+            Term::Block {
                 statements,
                 trailing_expression,
             } => {
                 for statement in statements {
                     match statement {
-                        hir::Statement::Let(pattern_id, expr_id) => {
+                        Statement::Let(pattern_id, expr_id) => {
                             let pattern = &self.body.patterns[*pattern_id];
                             let value = self.fold_expression(None, *expr_id).unwrap();
                             let binding = match pattern {
-                                hir::Pattern::Deconstructor(_, _) => todo!(),
-                                hir::Pattern::Bind(name) => Binding {
+                                Pattern::Deconstructor(_, _) => todo!(),
+                                Pattern::Bind(name) => Binding {
                                     name: name.clone(),
                                     value,
                                 },
@@ -1200,7 +1218,7 @@ impl<
                                 .borrow_mut()
                                 .push(std::iter::once(binding).collect());
                         }
-                        hir::Statement::Expression(expr_id) => {
+                        Statement::Expression(expr_id) => {
                             self.fold_expression(None, *expr_id);
                         }
                     }
@@ -1213,43 +1231,41 @@ impl<
                 }
                 value
             }
-            hir::Expression::If {
+            Term::If {
                 condition,
                 then_branch,
                 else_branch,
             } => self.fold_if_expression(indirect_value, condition, then_branch, else_branch),
-            hir::Expression::Match { matchee, case_list } => {
+            Term::Match { matchee, case_list } => {
                 let resolver =
                     Resolver::new_for_expression(self.db.upcast(), self.function_id, expr_id);
                 self.fold_match_expression(indirect_value, *matchee, case_list, resolver)
             }
-            hir::Expression::Call { callee, arguments } => {
+            Term::Call { callee, arguments } => {
                 self.fold_call_expression(indirect_value, callee, arguments)
             }
-            hir::Expression::Binary(operator, lhs, rhs) => {
+            Term::Binary(operator, lhs, rhs) => {
                 self.fold_binary_expression(indirect_value, operator, lhs, rhs)
             }
-            hir::Expression::Unary(op, expr) => {
-                self.fold_unary_expression(indirect_value, op, expr)
-            }
-            hir::Expression::Path(path) => {
+            Term::Unary(op, expr) => self.fold_unary_expression(indirect_value, op, expr),
+            Term::Path(path) => {
                 let resolver =
                     Resolver::new_for_expression(self.db.upcast(), self.function_id, expr_id);
                 self.fold_path_expression(indirect_value, path, resolver)
             }
-            hir::Expression::Literal(literal) => {
+            Term::Literal(literal) => {
                 self.fold_literal_expression(indirect_value, expr_id, literal)
             }
-            hir::Expression::New(inner) => self.fold_new_expression(indirect_value, *inner),
+            Term::New(inner) => self.fold_new_expression(indirect_value, *inner),
         }
     }
 
     fn fold_if_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        condition: &ExpressionId,
-        then_branch: &ExpressionId,
-        else_branch: &ExpressionId,
+        condition: &TermId,
+        then_branch: &TermId,
+        else_branch: &TermId,
     ) -> Option<Value<'context>> {
         let comparison = self
             .fold_expression(None, *condition)
@@ -1310,8 +1326,8 @@ impl<
     fn fold_match_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        matchee: ExpressionId,
-        case_list: &[(PatternId, ExpressionId)],
+        matchee: TermId,
+        case_list: &[(PatternId, TermId)],
         resolver: Resolver,
     ) -> Option<Value<'context>> {
         let Value {
@@ -1352,7 +1368,7 @@ impl<
                     .map(|(pattern_id, expression_id)| {
                         let case_pattern = &self.body.patterns[pattern_id];
                         match case_pattern {
-                            hir::Pattern::Deconstructor(path, _) => {
+                            Pattern::Deconstructor(path, _) => {
                                 let constructor_id = resolver
                                     .resolve_path_in_value_namespace(self.db.upcast(), path)
                                     .map(|item| match item {
@@ -1363,7 +1379,7 @@ impl<
                                 let tag_value = tag_map.get(&constructor_id).unwrap();
                                 ((pattern_id, expression_id), Some(*tag_value))
                             }
-                            hir::Pattern::Bind(_) => ((pattern_id, expression_id), None),
+                            Pattern::Bind(_) => ((pattern_id, expression_id), None),
                         }
                     })
                     .fold(
@@ -1396,7 +1412,7 @@ impl<
                             .prepend_basic_block(merge_block, format!("br.{}.tag", tag).as_str());
                         ((tag_value, case_block), (case_block, patterns))
                     })
-                    .unzip::<_, (BasicBlock, Vec<(PatternId, ExpressionId)>), Vec<_>, Vec<_>>();
+                    .unzip::<_, (BasicBlock, Vec<(PatternId, TermId)>), Vec<_>, Vec<_>>();
 
                 self.builder
                     .build_switch(tag_value, else_block, switch_cases.as_slice().as_ref());
@@ -1411,7 +1427,7 @@ impl<
                         let (pattern_id, expression_id) = cases.first().unwrap();
                         let pattern = &self.body.patterns[*pattern_id];
                         match pattern {
-                            hir::Pattern::Deconstructor(_, sub_patterns) => {
+                            Pattern::Deconstructor(_, sub_patterns) => {
                                 if sub_patterns.is_empty() {
                                     let case_value =
                                         self.fold_expression(indirect_value, *expression_id);
@@ -1453,67 +1469,65 @@ impl<
                                         .map(|(index, sub_pattern_id)| {
                                             let sub_pattern = &self.body.patterns[*sub_pattern_id];
                                             match sub_pattern {
-                                                hir::Pattern::Bind(name) => {
-                                                    match inner_value.kind {
-                                                        ValueKind::Indirect => {
-                                                            let bind_ptr = self
-                                                                .builder
-                                                                .build_struct_gep(
-                                                                    inner_value
-                                                                        .value
-                                                                        .into_pointer_value(),
-                                                                    index as u32,
-                                                                    "",
-                                                                )
-                                                                .unwrap();
-                                                            let value = if self
-                                                                .type_cache
-                                                                .target_data()
-                                                                .get_bit_size(
-                                                                    &bind_ptr
-                                                                        .get_type()
-                                                                        .get_element_type(),
-                                                                )
-                                                                <= 64
-                                                            {
-                                                                Value::new(
-                                                                    ValueKind::Direct,
-                                                                    self.builder
-                                                                        .build_load(bind_ptr, ""),
-                                                                )
-                                                            } else {
-                                                                Value::new(
-                                                                    ValueKind::Indirect,
-                                                                    bind_ptr.as_basic_value_enum(),
-                                                                )
-                                                            };
-                                                            Binding {
-                                                                name: name.clone(),
-                                                                value,
-                                                            }
-                                                        }
-                                                        ValueKind::Direct => {
-                                                            let value = self
-                                                                .builder
-                                                                .build_extract_value(
-                                                                    inner_value
-                                                                        .value
-                                                                        .into_struct_value(),
-                                                                    index as u32,
-                                                                    "",
-                                                                )
-                                                                .unwrap();
-                                                            Binding {
-                                                                name: name.clone(),
-                                                                value: Value {
-                                                                    kind: ValueKind::Direct,
-                                                                    value,
-                                                                },
-                                                            }
+                                                Pattern::Bind(name) => match inner_value.kind {
+                                                    ValueKind::Indirect => {
+                                                        let bind_ptr = self
+                                                            .builder
+                                                            .build_struct_gep(
+                                                                inner_value
+                                                                    .value
+                                                                    .into_pointer_value(),
+                                                                index as u32,
+                                                                "",
+                                                            )
+                                                            .unwrap();
+                                                        let value = if self
+                                                            .type_cache
+                                                            .target_data()
+                                                            .get_bit_size(
+                                                                &bind_ptr
+                                                                    .get_type()
+                                                                    .get_element_type(),
+                                                            )
+                                                            <= 64
+                                                        {
+                                                            Value::new(
+                                                                ValueKind::Direct,
+                                                                self.builder
+                                                                    .build_load(bind_ptr, ""),
+                                                            )
+                                                        } else {
+                                                            Value::new(
+                                                                ValueKind::Indirect,
+                                                                bind_ptr.as_basic_value_enum(),
+                                                            )
+                                                        };
+                                                        Binding {
+                                                            name: name.clone(),
+                                                            value,
                                                         }
                                                     }
-                                                }
-                                                hir::Pattern::Deconstructor(_, _) => todo!(),
+                                                    ValueKind::Direct => {
+                                                        let value = self
+                                                            .builder
+                                                            .build_extract_value(
+                                                                inner_value
+                                                                    .value
+                                                                    .into_struct_value(),
+                                                                index as u32,
+                                                                "",
+                                                            )
+                                                            .unwrap();
+                                                        Binding {
+                                                            name: name.clone(),
+                                                            value: Value {
+                                                                kind: ValueKind::Direct,
+                                                                value,
+                                                            },
+                                                        }
+                                                    }
+                                                },
+                                                Pattern::Deconstructor(_, _) => todo!(),
                                             }
                                         })
                                         .collect();
@@ -1527,7 +1541,7 @@ impl<
                                     (case_value, case_block)
                                 }
                             }
-                            hir::Pattern::Bind(_) => todo!(),
+                            Pattern::Bind(_) => todo!(),
                         }
                     })
                     .collect::<Vec<_>>();
@@ -1563,8 +1577,8 @@ impl<
     fn fold_call_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        callee: &ExpressionId,
-        arguments: &[ExpressionId],
+        callee: &TermId,
+        arguments: &[TermId],
     ) -> Option<Value<'context>> {
         let callee_type = &self.inference.type_of_expression[*callee];
         let callable_definition = match callee_type {
@@ -1644,8 +1658,9 @@ impl<
                 }
             }
             CallableDefinitionId::ValueConstructor(constructor_id) => {
-                let (struct_type, type_info) =
-                    self.type_cache.adt_struct(constructor_id.parrent_id);
+                let (struct_type, type_info) = self
+                    .type_cache
+                    .adt_struct(constructor_id.type_definition_id);
                 match indirect_value {
                     Some(ptr) => {
                         if let Some(tag_type) = type_info.tag {
@@ -1768,8 +1783,8 @@ impl<
         &self,
         indirect_value: Option<PointerValue<'context>>,
         operator: &BinaryOperator,
-        lhs: &ExpressionId,
-        rhs: &ExpressionId,
+        lhs: &TermId,
+        rhs: &TermId,
     ) -> Option<Value<'context>> {
         let lhs = self
             .fold_expression(None, *lhs)
@@ -1782,31 +1797,31 @@ impl<
             .value
             .into_int_value();
         let int_value = match operator {
-            hir::BinaryOperator::Arithmetic(arithmetic_op) => match arithmetic_op {
-                hir::ArithmeticOperator::Add => self.builder.build_int_add(lhs, rhs, ""),
-                hir::ArithmeticOperator::Sub => self.builder.build_int_sub(lhs, rhs, ""),
-                hir::ArithmeticOperator::Div => self.builder.build_int_signed_div(lhs, rhs, ""),
-                hir::ArithmeticOperator::Mul => self.builder.build_int_mul(lhs, rhs, ""),
-                hir::ArithmeticOperator::Rem => self.builder.build_int_signed_rem(lhs, rhs, ""),
+            BinaryOperator::Arithmetic(arithmetic_op) => match arithmetic_op {
+                ArithmeticOperator::Add => self.builder.build_int_add(lhs, rhs, ""),
+                ArithmeticOperator::Sub => self.builder.build_int_sub(lhs, rhs, ""),
+                ArithmeticOperator::Div => self.builder.build_int_signed_div(lhs, rhs, ""),
+                ArithmeticOperator::Mul => self.builder.build_int_mul(lhs, rhs, ""),
+                ArithmeticOperator::Rem => self.builder.build_int_signed_rem(lhs, rhs, ""),
             },
-            hir::BinaryOperator::Compare(compare_op) => {
+            BinaryOperator::Compare(compare_op) => {
                 let predicate = match compare_op {
-                    hir::CompareOperator::Equality { negated } => match negated {
+                    CompareOperator::Equality { negated } => match negated {
                         true => IntPredicate::NE,
                         false => IntPredicate::EQ,
                     },
-                    hir::CompareOperator::Order { ordering, strict } => match (ordering, strict) {
-                        (hir::Ordering::Less, true) => IntPredicate::SLT,
-                        (hir::Ordering::Less, false) => IntPredicate::SLE,
-                        (hir::Ordering::Greater, true) => IntPredicate::SGT,
-                        (hir::Ordering::Greater, false) => IntPredicate::SGE,
+                    CompareOperator::Order { ordering, strict } => match (ordering, strict) {
+                        (Ordering::Less, true) => IntPredicate::SLT,
+                        (Ordering::Less, false) => IntPredicate::SLE,
+                        (Ordering::Greater, true) => IntPredicate::SGT,
+                        (Ordering::Greater, false) => IntPredicate::SGE,
                     },
                 };
                 self.builder.build_int_compare(predicate, lhs, rhs, "")
             }
-            hir::BinaryOperator::Logic(logic_op) => match logic_op {
-                hir::LogicOperator::And => self.builder.build_and(lhs, rhs, ""),
-                hir::LogicOperator::Or => self.builder.build_or(lhs, rhs, ""),
+            BinaryOperator::Logic(logic_op) => match logic_op {
+                LogicOperator::And => self.builder.build_and(lhs, rhs, ""),
+                LogicOperator::Or => self.builder.build_or(lhs, rhs, ""),
             },
         };
         match indirect_value {
@@ -1823,7 +1838,7 @@ impl<
         &self,
         indirect_value: Option<PointerValue<'context>>,
         operator: &UnaryOperator,
-        expression: &ExpressionId,
+        expression: &TermId,
     ) -> Option<Value<'context>> {
         let Value { value: expr, kind } = self.fold_expression(None, *expression).unwrap();
         let (kind, value) = match operator {
@@ -1864,7 +1879,7 @@ impl<
     fn fold_path_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        path: &hir::Path,
+        path: &hir::path::Path,
         resolver: Resolver,
     ) -> Option<Value<'context>> {
         let item = resolver
@@ -1872,20 +1887,19 @@ impl<
             .unwrap();
 
         match item {
-            hir::ValueNamespaceItem::Function(_) => todo!(),
-            hir::ValueNamespaceItem::ValueConstructor(_) => todo!(),
-            hir::ValueNamespaceItem::LocalBinding(pattern_id) => {
-                match &self.body.patterns[pattern_id] {
-                    hir::Pattern::Deconstructor(_, _) => todo!(),
-                    hir::Pattern::Bind(name) => {
-                        let value = self
-                            .binding_stack
-                            .borrow()
-                            .get(name)
-                            .expect("missing id {name:?} from scope.");
-                        match indirect_value {
-                            Some(ptr) => {
-                                match value.kind {
+            ValueNamespaceItem::Function(_) => todo!(),
+            ValueNamespaceItem::ValueConstructor(_) => todo!(),
+            ValueNamespaceItem::LocalBinding(pattern_id) => match &self.body.patterns[pattern_id] {
+                Pattern::Deconstructor(_, _) => todo!(),
+                Pattern::Bind(name) => {
+                    let value = self
+                        .binding_stack
+                        .borrow()
+                        .get(name)
+                        .expect("missing id {name:?} from scope.");
+                    match indirect_value {
+                        Some(ptr) => {
+                            match value.kind {
                                     ValueKind::Indirect => {
                                         let source = value.value.into_pointer_value();
                                         let _ = self.builder.build_memcpy(
@@ -1898,20 +1912,19 @@ impl<
                                     }
                                     ValueKind::Direct => panic!("trying to put direct value into indirect value at bind {name:?}."),
                                 }
-                                None
-                            }
-                            None => Some(value.clone()),
+                            None
                         }
+                        None => Some(value.clone()),
                     }
                 }
-            }
+            },
         }
     }
 
     fn fold_literal_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        literal_id: ExpressionId,
+        literal_id: TermId,
         literal: &Literal,
     ) -> Option<Value<'context>> {
         let literal_type = &self.inference.type_of_expression[literal_id];
@@ -1920,20 +1933,20 @@ impl<
             Type::FunctionDefinition(_) => todo!(),
             Type::Scalar(ScalarType::Integer(kind)) => {
                 let value = match literal {
-                    hir::Literal::Integer(value, _) => *value,
+                    Literal::Integer(value, _) => *value,
                     _ => panic!(),
                 };
                 match kind {
-                    hir::IntegerKind::I32 => {
+                    IntegerKind::I32 => {
                         self.context.i32_type().const_int(value as u64, true).into()
                     }
-                    hir::IntegerKind::I64 => {
+                    IntegerKind::I64 => {
                         self.context.i64_type().const_int(value as u64, true).into()
                     }
                 }
             }
             Type::Scalar(ScalarType::Boolean) => match literal {
-                hir::Literal::Bool(bool) => match bool {
+                Literal::Bool(bool) => match bool {
                     true => self.context.bool_type().const_all_ones().into(),
                     false => self.context.bool_type().const_zero().into(),
                 },
@@ -1954,7 +1967,7 @@ impl<
     fn fold_new_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        expr: ExpressionId,
+        expr: TermId,
     ) -> Option<Value<'context>> {
         let ty = &self.inference.type_of_expression[expr];
         let ty = self.type_cache.llvm_type(ty);

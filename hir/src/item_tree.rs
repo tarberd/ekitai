@@ -2,9 +2,8 @@ use la_arena::{Arena, Idx};
 use syntax::ast::{self, SourceFile};
 
 use crate::{
-    ast_node_map::{AstNodeId, AstNodeMap},
-    definitions_map::ValueConstructor,
-    Name, TypeReference,
+    ast_node_map::AstNodeMap,
+    item::{FunctionDefinition, Item, TypeDefinition},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,93 +15,70 @@ pub struct ItemTree {
 
 impl ItemTree {
     pub(crate) fn new(source: ast::SourceFile, ast_node_map: AstNodeMap) -> Self {
-        let ItemTreeFold {
-            root_items,
-            functions,
-            types,
-            ..
-        } = ItemTreeFold::new(source, ast_node_map).collect_root_items();
-        Self {
-            root_items,
-            functions,
-            types,
-        }
+        ItemTreeFold::new(source, ast_node_map)
+            .collect_root_items()
+            .into()
     }
 
     pub(crate) fn root_items(&self) -> &[Item] {
         &self.root_items
     }
 
-    pub(crate) fn get<I: ItemTreeNode>(&self, item_id: ItemId<I>) -> &I {
-        I::lookup(self, item_id.id)
+    pub(crate) fn get<I: ItemTreeNode>(&self, item_id: ItemTreeNodeId<I>) -> &I {
+        I::lookup(self, item_id)
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Item {
-    Function(ItemId<FunctionDefinition>),
-    Type(ItemId<TypeDefinition>),
-}
-
-impl From<Idx<FunctionDefinition>> for Item {
-    fn from(id: Idx<FunctionDefinition>) -> Self {
-        Self::Function(ItemId { id })
-    }
-}
-
-impl From<Idx<TypeDefinition>> for Item {
-    fn from(id: Idx<TypeDefinition>) -> Self {
-        Self::Type(ItemId { id })
+impl From<ItemTreeFold> for ItemTree {
+    fn from(fold: ItemTreeFold) -> Self {
+        let ItemTreeFold {
+            root_items,
+            functions,
+            types,
+            ..
+        } = fold;
+        Self {
+            root_items,
+            functions,
+            types,
+        }
     }
 }
 
 pub trait ItemTreeNode: Sized {
-    fn lookup(item_tree: &ItemTree, id: Idx<Self>) -> &Self;
+    fn lookup(item_tree: &ItemTree, item_id: ItemTreeNodeId<Self>) -> &Self;
+}
+
+impl ItemTreeNode for FunctionDefinition {
+    fn lookup(item_tree: &ItemTree, item_id: ItemTreeNodeId<Self>) -> &Self {
+        &item_tree.functions[item_id.id]
+    }
+}
+
+impl ItemTreeNode for TypeDefinition {
+    fn lookup(item_tree: &ItemTree, item_id: ItemTreeNodeId<Self>) -> &Self {
+        &item_tree.types[item_id.id]
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ItemId<I: ItemTreeNode> {
+pub struct ItemTreeNodeId<I: ItemTreeNode> {
     id: Idx<I>,
 }
 
-impl<I: ItemTreeNode> Clone for ItemId<I> {
+impl<I: ItemTreeNode> Clone for ItemTreeNodeId<I> {
     fn clone(&self) -> Self {
         Self {
             id: self.id.clone(),
         }
     }
 }
-impl<I: ItemTreeNode> Copy for ItemId<I> {}
-impl<I: ItemTreeNode> std::hash::Hash for ItemId<I> {
+
+impl<I: ItemTreeNode> Copy for ItemTreeNodeId<I> {}
+
+impl<I: ItemTreeNode> std::hash::Hash for ItemTreeNodeId<I> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionDefinition {
-    pub name: Name,
-    pub parameter_types: Vec<TypeReference>,
-    pub return_type: TypeReference,
-    pub ast_node_id: AstNodeId<ast::FunctionDefinition>,
-}
-
-impl ItemTreeNode for FunctionDefinition {
-    fn lookup(item_tree: &ItemTree, id: Idx<Self>) -> &Self {
-        &item_tree.functions[id]
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TypeDefinition {
-    pub name: Name,
-    pub value_constructors: Arena<ValueConstructor>,
-    pub ast_node_id: AstNodeId<ast::TypeDefinition>,
-}
-
-impl ItemTreeNode for TypeDefinition {
-    fn lookup(item_tree: &ItemTree, id: Idx<Self>) -> &Self {
-        &item_tree.types[id]
     }
 }
 
@@ -135,16 +111,16 @@ impl ItemTreeFold {
     }
 
     fn collect_function(mut self, function: ast::FunctionDefinition) -> Self {
-        let function = FunctionDefinition::lower(&self.ast_node_map, function);
+        let function = FunctionDefinition::from_ast(&self.ast_node_map, function);
         let id = self.functions.alloc(function);
-        self.root_items.push(id.into());
+        self.root_items.push(ItemTreeNodeId { id }.into());
         self
     }
 
     fn collect_type(mut self, ty: ast::TypeDefinition) -> Self {
-        let ty = TypeDefinition::lower(&self.ast_node_map, ty);
+        let ty = TypeDefinition::from_ast(&self.ast_node_map, ty);
         let id = self.types.alloc(ty);
-        self.root_items.push(id.into());
+        self.root_items.push(ItemTreeNodeId { id }.into());
         self
     }
 }
