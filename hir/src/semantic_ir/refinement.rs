@@ -1,8 +1,7 @@
-use crate::{
-    semantic_ir::term::{ArithmeticOperator, LogicOperator, Ordering},
-    BinaryOperator, CompareOperator, Name,
-};
+use crate::semantic_ir::term::{ArithmeticOperator, LogicOperator, Ordering};
 use syntax::ast;
+
+use super::{name::Name, term::{BinaryOperator, CompareOperator}};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Predicate {

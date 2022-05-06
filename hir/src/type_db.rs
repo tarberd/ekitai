@@ -1,11 +1,10 @@
 use crate::{
     check::{
         type_inference::{InferenceResult, TypeReferenceResolver},
-        FunctionSignature, IntegerKind, ScalarType, TypeableDefinition,
+        FunctionSignature, IntegerKind, ScalarType, TypeableDefinition, Type,
     },
-    semantic_ir::intrinsic::{BuiltinInteger, BuiltinType},
-    CallableDefinitionId, DefinitionsDatabase, FunctionDefinitionId, Resolver, Type,
-    TypeableValueDefinitionId, Upcast, ValueConstructorId,
+    semantic_ir::{intrinsic::{BuiltinInteger, BuiltinType}, definition_map::{TypeableValueDefinitionId, CallableDefinitionId, FunctionDefinitionId, ValueConstructorId}, path_resolver::Resolver},
+    DefinitionsDatabase, Upcast,
 };
 
 #[salsa::query_group(HirDatabaseStorage)]

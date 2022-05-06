@@ -2,14 +2,14 @@ use std::collections::HashMap;
 
 use la_arena::{Arena, Idx};
 
-use crate::{DefinitionsDatabase, Name, Path};
+use crate::{DefinitionsDatabase};
 
 use super::{
     intrinsic::BUILTIN_SCOPE,
     item::{FunctionDefinition, Item, TypeDefinition, ValueConstructor},
     item_tree::{ItemTree, ItemTreeNodeId},
     path_resolver::{TypeNamespaceItem, ValueNamespaceItem},
-    type_reference::TypeReference,
+    type_reference::TypeReference, path::Path, name::Name,
 };
 
 #[salsa::query_group(InternerStorage)]
