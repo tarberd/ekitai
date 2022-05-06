@@ -22,14 +22,22 @@ use inkwell::{
 };
 
 use hir::{
-    name::Name,
-    term::{
-        ArithmeticOperator, BinaryOperator, Body, CompareOperator, TermId, Literal,
-        LogicOperator, Ordering, Pattern, PatternId, Statement, Term, UnaryOperator,
+    check::type_inference::InferenceResult,
+    check::{IntegerKind, ScalarType, Type},
+    semantic_ir::{
+        definition_map::{CallableDefinitionId, ValueConstructorId},
+        name::Name,
+        path_resolver::{Resolver, ValueNamespaceItem},
     },
-    CallableDefinitionId, FunctionDefinitionId, HirDatabase, InferenceResult, IntegerKind,
-    Resolver, ScalarType, SourceDatabase, Type, TypeDefinitionId, Upcast, ValueConstructorId,
-    ValueNamespaceItem,
+    semantic_ir::{
+        definition_map::{FunctionDefinitionId, TypeDefinitionId},
+        path::Path,
+        term::{
+            ArithmeticOperator, BinaryOperator, Body, CompareOperator, Literal, LogicOperator,
+            Ordering, Pattern, PatternId, Statement, Term, TermId, UnaryOperator,
+        },
+    },
+    HirDatabase, SourceDatabase, Upcast,
 };
 
 #[salsa::query_group(CodeGenDatabaseStorage)]
@@ -424,8 +432,8 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
     fn scalar_type(&self, scalar: &ScalarType) -> BasicTypeEnum<'context> {
         match scalar {
             ScalarType::Integer(int_kind) => match int_kind {
-                hir::IntegerKind::I32 => self.context.i32_type().into(),
-                hir::IntegerKind::I64 => self.context.i64_type().into(),
+                IntegerKind::I32 => self.context.i32_type().into(),
+                IntegerKind::I64 => self.context.i64_type().into(),
             },
             ScalarType::Boolean => self.context.bool_type().into(),
         }
@@ -1372,7 +1380,7 @@ impl<
                                 let constructor_id = resolver
                                     .resolve_path_in_value_namespace(self.db.upcast(), path)
                                     .map(|item| match item {
-                                        hir::ValueNamespaceItem::ValueConstructor(id) => id,
+                                        ValueNamespaceItem::ValueConstructor(id) => id,
                                         _ => panic!(),
                                     })
                                     .unwrap();
@@ -1587,8 +1595,8 @@ impl<
         };
         match callable_definition {
             CallableDefinitionId::FunctionDefinition(id) => {
-                let function_info = self.function_info_cache.function_info(id);
-                let function_value = self.function_value_cache.llvm_function_value(id);
+                let function_info = self.function_info_cache.function_info(&id);
+                let function_value = self.function_value_cache.llvm_function_value(&id);
 
                 let return_type = function_info.get_return_type(function_value);
 
@@ -1664,7 +1672,7 @@ impl<
                 match indirect_value {
                     Some(ptr) => {
                         if let Some(tag_type) = type_info.tag {
-                            let tag_value = type_info.tag_map[constructor_id];
+                            let tag_value = type_info.tag_map[&constructor_id];
                             let tag_value = tag_type.const_int(tag_value as u64, false);
                             let tag_ptr = self.builder.build_struct_gep(ptr, 0, "").unwrap();
                             self.builder.build_store(tag_ptr, tag_value);
@@ -1718,7 +1726,7 @@ impl<
                         let value = struct_type.const_zero();
                         let TypeInfo { tag, tag_map } = type_info;
                         let tag_value = tag.map(|tag_type| {
-                            tag_type.const_int(tag_map[constructor_id] as u64, true)
+                            tag_type.const_int(tag_map[&constructor_id] as u64, true)
                         });
                         let value = if let Some(tag_value) = tag_value {
                             if type_size <= 64 {
@@ -1879,7 +1887,7 @@ impl<
     fn fold_path_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        path: &hir::path::Path,
+        path: &Path,
         resolver: Resolver,
     ) -> Option<Value<'context>> {
         let item = resolver

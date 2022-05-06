@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 
-use la_arena::Idx;
+use la_arena::{Arena, Idx};
 
-use crate::{
-    intrinsic::BuiltinType,
+use crate::{DefinitionsDatabase, Name, Path};
+
+use super::{
     intrinsic::BUILTIN_SCOPE,
     item::{FunctionDefinition, Item, TypeDefinition, ValueConstructor},
     item_tree::{ItemTree, ItemTreeNodeId},
-    DefinitionsDatabase, Name, Path, PatternId,
+    path_resolver::{TypeNamespaceItem, ValueNamespaceItem},
+    type_reference::TypeReference,
 };
 
 #[salsa::query_group(InternerStorage)]
@@ -47,12 +49,24 @@ impl salsa::InternKey for TypeDefinitionId {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionDefinitionLocation {
-    pub item_id: ItemTreeNodeId<FunctionDefinition>,
+    item_id: ItemTreeNodeId<FunctionDefinition>,
+}
+
+impl<'a> FunctionDefinitionLocation {
+    pub(crate) fn in_item_tree(&self, item_tree: &'a ItemTree) -> &'a FunctionDefinition {
+        item_tree.get(self.item_id)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TypeDefinitionLocation {
     pub item_id: ItemTreeNodeId<TypeDefinition>,
+}
+
+impl<'a> TypeDefinitionLocation {
+    pub(crate) fn in_item_tree(&self, item_tree: &'a ItemTree) -> &'a TypeDefinition {
+        item_tree.get(self.item_id)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,7 +109,9 @@ impl DefinitionMap {
             definitions,
         };
 
-        DefinitionMap { root_module_scope: item_scope }
+        DefinitionMap {
+            root_module_scope: item_scope,
+        }
     }
 
     pub fn root_module_item_scope(&self) -> &ItemScope {
@@ -242,21 +258,83 @@ impl NamespaceResolution {
     }
 }
 
-pub enum TypeNamespaceItem {
-    TypeDefinition(TypeDefinitionId),
-    Builtin(BuiltinType),
-}
-
-#[derive(Debug)]
-pub enum ValueNamespaceItem {
-    Function(FunctionDefinitionId),
-    ValueConstructor(ValueConstructorId),
-    /// local binding in expression body
-    LocalBinding(PatternId),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValueConstructorId {
     pub type_definition_id: TypeDefinitionId,
     pub id: Idx<ValueConstructor>,
+}
+
+impl From<ValueConstructorId> for CallableDefinitionId {
+    fn from(id: ValueConstructorId) -> Self {
+        Self::ValueConstructor(id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeableValueDefinitionId {
+    Function(FunctionDefinitionId),
+    ValueConstructor(ValueConstructorId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CallableDefinitionId {
+    FunctionDefinition(FunctionDefinitionId),
+    ValueConstructor(ValueConstructorId),
+}
+
+impl From<FunctionDefinitionId> for CallableDefinitionId {
+    fn from(id: FunctionDefinitionId) -> Self {
+        Self::FunctionDefinition(id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeDefinitionData {
+    pub name: Name,
+    pub value_constructors: Arena<ValueConstructor>,
+}
+
+impl TypeDefinitionData {
+    pub fn value_constructor(&self, id: Idx<ValueConstructor>) -> &ValueConstructor {
+        &self.value_constructors[id]
+    }
+}
+
+impl From<TypeDefinition> for TypeDefinitionData {
+    fn from(ty: TypeDefinition) -> Self {
+        let TypeDefinition {
+            name,
+            value_constructors,
+            ..
+        } = ty;
+
+        TypeDefinitionData {
+            name,
+            value_constructors,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionDefinitionData {
+    pub name: Name,
+    pub parameter_types: Vec<TypeReference>,
+    pub return_type: TypeReference,
+}
+
+impl From<FunctionDefinition> for FunctionDefinitionData {
+    fn from(function: FunctionDefinition) -> Self {
+        let FunctionDefinition {
+            name,
+            parameter_types,
+            return_type,
+            ..
+        } = function;
+
+        FunctionDefinitionData {
+            name,
+            parameter_types,
+            return_type,
+        }
+    }
 }

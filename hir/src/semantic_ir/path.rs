@@ -1,6 +1,6 @@
 use syntax::ast;
 
-use crate::name::Name;
+use super::name::Name;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Path {

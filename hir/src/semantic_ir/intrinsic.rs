@@ -1,4 +1,4 @@
-use crate::name::Name;
+use super::name::Name;
 
 pub(crate) static BUILTIN_SCOPE: &[(Name, BuiltinType)] = &[
     (Name::new_inline("bool"), BuiltinType::Boolean),

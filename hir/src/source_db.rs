@@ -1,5 +1,6 @@
-use crate::ast_node_map::AstNodeMap;
 use syntax::{ast, Parse};
+
+use crate::semantic_ir::ast_node_map::AstNodeMap;
 
 #[salsa::query_group(SourceDatabaseStorage)]
 pub trait SourceDatabase {
