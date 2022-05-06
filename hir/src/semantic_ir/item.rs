@@ -1,13 +1,12 @@
 use la_arena::Arena;
 use syntax::ast;
 
-use crate::{
+use super::{
     ast_node_map::{AstNodeId, AstNodeMap},
+    item_tree::ItemTreeNodeId,
     name::Name,
     type_reference::TypeReference,
 };
-
-use crate::item_tree::ItemTreeNodeId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Item {

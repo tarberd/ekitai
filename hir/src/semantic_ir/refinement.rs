@@ -1,5 +1,5 @@
 use crate::{
-    term::{ArithmeticOperator, LogicOperator, Ordering},
+    semantic_ir::term::{ArithmeticOperator, LogicOperator, Ordering},
     BinaryOperator, CompareOperator, Name,
 };
 use syntax::ast;

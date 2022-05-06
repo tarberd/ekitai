@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use la_arena::{Arena, Idx};
 use syntax::ast::{self, AstNode, AstPtr, EkitaiLanguage, SyntaxNodePtr};
 
+/// Tries to index the syntax tree nodes in the same order every time
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AstNodeMap {
     syntax_node_pointers: Arena<SyntaxNodePtr>,

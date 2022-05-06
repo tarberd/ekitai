@@ -1,7 +1,7 @@
 use la_arena::{Arena, Idx};
 use syntax::ast;
 
-use crate::{name::Name, path::Path, IntegerKind};
+use super::{intrinsic::BuiltinInteger, name::Name, path::Path};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Body {
@@ -110,7 +110,7 @@ pub enum Statement {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Literal {
-    Integer(u128, Option<IntegerKind>),
+    Integer(u128, Option<BuiltinInteger>),
     Bool(bool),
 }
 
@@ -414,8 +414,8 @@ impl BodyFold {
                 let (radical, suffix) = integer.radical_and_suffix();
 
                 let kind = match suffix {
-                    Some("i32") => Some(IntegerKind::I32),
-                    Some("i64") => Some(IntegerKind::I64),
+                    Some("i32") => Some(BuiltinInteger::I32),
+                    Some("i64") => Some(BuiltinInteger::I64),
                     Some(_invalid_suffix) => None,
                     None => None,
                 };
@@ -429,8 +429,8 @@ impl BodyFold {
                 {
                     Some(value) => match kind {
                         None => value,
-                        Some(IntegerKind::I32) => value,
-                        Some(IntegerKind::I64) => value,
+                        Some(BuiltinInteger::I32) => value,
+                        Some(BuiltinInteger::I64) => value,
                     },
                     None => {
                         // larger than u128

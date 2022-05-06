@@ -1,11 +1,12 @@
 use la_arena::{Arena, Idx};
 use syntax::ast::{self, SourceFile};
 
-use crate::{
+use super::{
     ast_node_map::AstNodeMap,
     item::{FunctionDefinition, Item, TypeDefinition},
 };
 
+/// A tree of items
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ItemTree {
     root_items: Vec<Item>,
