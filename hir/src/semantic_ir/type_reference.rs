@@ -1,6 +1,6 @@
 use syntax::ast;
 
-use crate::{name::Name, path::Path, refinement::Predicate};
+use super::{name::Name, path::Path, refinement::Predicate};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeReference {
