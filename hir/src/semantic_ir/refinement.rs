@@ -1,7 +1,20 @@
 use crate::semantic_ir::term::{ArithmeticOperator, LogicOperator, Ordering};
+use la_arena::{Arena, Idx};
 use syntax::ast;
 
-use super::{name::Name, term::{BinaryOperator, CompareOperator}};
+use super::{
+    name::Name,
+    term::{BinaryOperator, CompareOperator, Pattern, PatternId},
+};
+
+pub struct Refinement {
+    pub patterns: Arena<Pattern>,
+    pub value_binder: PatternId,
+    pub predicates: Arena<Predicate>,
+    pub root_predicate: PredicateId,
+}
+
+type PredicateId = Idx<Predicate>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Predicate {

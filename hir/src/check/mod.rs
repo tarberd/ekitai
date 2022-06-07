@@ -6,6 +6,7 @@ use crate::semantic_ir::{
     name::Name,
     path_resolver::TypeNamespaceItem,
     refinement::Predicate,
+    term::Pattern,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -33,9 +34,14 @@ impl From<TypeDefinitionId> for TypeableDefinition {
 pub enum Type {
     AbstractDataType(TypeDefinitionId),
     FunctionDefinition(CallableDefinitionId),
-    Refinement(Box<Type>, Name, Predicate),
     Pointer(Box<Type>),
     Scalar(ScalarType),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiquidType {
+    Base(Type),
+    DependentFunction(CallableDefinitionId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,7 +66,7 @@ impl From<BuiltinInteger> for IntegerKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionSignature {
-    pub parameter_types: Vec<Type>,
-    pub return_type: Type,
+pub struct DependentFunctionSignature {
+    pub parameters: Vec<(Pattern, LiquidType)>,
+    pub return_type: LiquidType,
 }

@@ -2,14 +2,17 @@ use std::collections::HashMap;
 
 use la_arena::{Arena, Idx};
 
-use crate::{DefinitionsDatabase};
+use crate::DefinitionsDatabase;
 
 use super::{
     intrinsic::BUILTIN_SCOPE,
     item::{FunctionDefinition, Item, TypeDefinition, ValueConstructor},
     item_tree::{ItemTree, ItemTreeNodeId},
+    name::Name,
+    path::Path,
     path_resolver::{TypeNamespaceItem, ValueNamespaceItem},
-    type_reference::TypeReference, path::Path, name::Name,
+    term::Pattern,
+    type_reference::TypeReference,
 };
 
 #[salsa::query_group(InternerStorage)]
@@ -318,7 +321,7 @@ impl From<TypeDefinition> for TypeDefinitionData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDefinitionData {
     pub name: Name,
-    pub parameter_types: Vec<TypeReference>,
+    pub parameters: Vec<(Pattern, TypeReference)>,
     pub return_type: TypeReference,
 }
 
@@ -326,14 +329,14 @@ impl From<FunctionDefinition> for FunctionDefinitionData {
     fn from(function: FunctionDefinition) -> Self {
         let FunctionDefinition {
             name,
-            parameter_types,
+            parameters,
             return_type,
             ..
         } = function;
 
         FunctionDefinitionData {
             name,
-            parameter_types,
+            parameters,
             return_type,
         }
     }
