@@ -11,7 +11,6 @@ use super::{
     name::Name,
     path::Path,
     path_resolver::{TypeNamespaceItem, ValueNamespaceItem},
-    term::Pattern,
     type_reference::TypeReference,
 };
 
@@ -321,7 +320,7 @@ impl From<TypeDefinition> for TypeDefinitionData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDefinitionData {
     pub name: Name,
-    pub parameters: Vec<(Pattern, TypeReference)>,
+    pub parameter_types: Vec<TypeReference>,
     pub return_type: TypeReference,
 }
 
@@ -329,14 +328,14 @@ impl From<FunctionDefinition> for FunctionDefinitionData {
     fn from(function: FunctionDefinition) -> Self {
         let FunctionDefinition {
             name,
-            parameters,
+            parameter_types,
             return_type,
             ..
         } = function;
 
         FunctionDefinitionData {
             name,
-            parameters,
+            parameter_types,
             return_type,
         }
     }

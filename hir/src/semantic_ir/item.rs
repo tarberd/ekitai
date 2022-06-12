@@ -5,7 +5,6 @@ use super::{
     ast_node_map::{AstNodeId, AstNodeMap},
     item_tree::ItemTreeNodeId,
     name::Name,
-    term::Pattern,
     type_reference::TypeReference,
 };
 
@@ -72,26 +71,19 @@ impl ValueConstructor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionDefinition {
     pub name: Name,
-    pub parameters: Vec<(Pattern, TypeReference)>,
+    pub parameter_types: Vec<TypeReference>,
     pub return_type: TypeReference,
     pub ast_node_id: AstNodeId<ast::FunctionDefinition>,
 }
 
 impl FunctionDefinition {
     pub(crate) fn from_ast(ast_node_map: &AstNodeMap, f: ast::FunctionDefinition) -> Self {
-        let parameters = f.parameter_list().map_or(Vec::new(), |param_list| {
+        let parameter_types = f.parameter_list().map_or(Vec::new(), |param_list| {
             let params = param_list.parameters();
             params
                 .map(|param| {
-                    (
-                        Pattern::lower(
-                            param
-                                .pattern()
-                                .expect("missing pattern for function parameter"),
-                        ),
-                        TypeReference::from_ast(
-                            param.ty().expect("missing type for function parameter"),
-                        ),
+                    TypeReference::from_ast(
+                        param.ty().expect("missing type for function parameter"),
                     )
                 })
                 .collect()
@@ -102,7 +94,7 @@ impl FunctionDefinition {
         let ast_node_id = ast_node_map.ast_id(&f);
         Self {
             name,
-            parameters,
+            parameter_types,
             return_type,
             ast_node_id,
         }

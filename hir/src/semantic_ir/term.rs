@@ -6,9 +6,9 @@ use super::{intrinsic::BuiltinInteger, name::Name, path::Path};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Body {
     pub patterns: Arena<Pattern>,
-    pub parameters: Vec<PatternId>,
+    pub parameters: Vec<BodyPatternId>,
     pub expressions: Arena<Term>,
-    pub root_expression: TermId,
+    pub root_expression: BodyTermId,
 }
 
 impl Body {
@@ -53,39 +53,39 @@ impl Body {
     }
 }
 
-pub type TermId = Idx<Term>;
+pub type BodyTermId = Idx<Term>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Term {
     Block {
         statements: Vec<Statement>,
-        trailing_expression: TermId,
+        trailing_expression: BodyTermId,
     },
     If {
-        condition: TermId,
-        then_branch: TermId,
-        else_branch: TermId,
+        condition: BodyTermId,
+        then_branch: BodyTermId,
+        else_branch: BodyTermId,
     },
     Match {
-        matchee: TermId,
-        case_list: Vec<(PatternId, TermId)>,
+        matchee: BodyTermId,
+        case_list: Vec<(BodyPatternId, BodyTermId)>,
     },
     Call {
-        callee: TermId,
-        arguments: Vec<TermId>,
+        callee: BodyTermId,
+        arguments: Vec<BodyTermId>,
     },
-    New(TermId),
-    Binary(BinaryOperator, TermId, TermId),
-    Unary(UnaryOperator, TermId),
+    New(BodyTermId),
+    Binary(BinaryOperator, BodyTermId, BodyTermId),
+    Unary(UnaryOperator, BodyTermId),
     Path(Path),
     Literal(Literal),
 }
 
-pub type PatternId = Idx<Pattern>;
+pub type BodyPatternId = Idx<Pattern>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Pattern {
-    Deconstructor(Path, Vec<PatternId>),
+    Deconstructor(Path, Vec<BodyPatternId>),
     Bind(Name),
 }
 
@@ -104,8 +104,8 @@ impl Pattern {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
-    Let(PatternId, TermId),
-    Expression(TermId),
+    Let(BodyPatternId, BodyTermId),
+    Expression(BodyTermId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,7 +160,7 @@ pub enum UnaryOperator {
 struct BodyFold {
     pub expressions: Arena<Term>,
     pub patterns: Arena<Pattern>,
-    pub parameters: Vec<PatternId>,
+    pub parameters: Vec<BodyPatternId>,
 }
 
 impl BodyFold {
@@ -187,7 +187,7 @@ impl BodyFold {
         fold
     }
 
-    fn fold_pattern(self, pattern: ast::Pattern) -> (Self, PatternId) {
+    fn fold_pattern(self, pattern: ast::Pattern) -> (Self, BodyPatternId) {
         let (mut fold, pattern) = match pattern {
             ast::Pattern::DeconstructorPattern(deconstructor) => {
                 let subpatterns = deconstructor.pattern_list().unwrap().patterns();
@@ -214,7 +214,7 @@ impl BodyFold {
         (fold, pattern_id)
     }
 
-    fn fold_expression(self, expression: ast::Expression) -> (Self, TermId) {
+    fn fold_expression(self, expression: ast::Expression) -> (Self, BodyTermId) {
         match expression {
             ast::Expression::Literal(literal) => self.fold_literal_expression(literal),
             ast::Expression::PathExpression(path) => self.fold_path_expression(path),
@@ -231,7 +231,7 @@ impl BodyFold {
         }
     }
 
-    fn fold_block_expression(self, block: ast::BlockExpression) -> (Self, TermId) {
+    fn fold_block_expression(self, block: ast::BlockExpression) -> (Self, BodyTermId) {
         let statement_list = block.statement_list().unwrap();
         let (fold, statements) = statement_list.statements().fold(
             (self, Vec::new()),
@@ -278,7 +278,7 @@ impl BodyFold {
         }
     }
 
-    fn fold_infix_expression(self, infix: ast::InfixExpression) -> (Self, TermId) {
+    fn fold_infix_expression(self, infix: ast::InfixExpression) -> (Self, BodyTermId) {
         let (fold, lhs) =
             self.fold_expression(infix.lhs().expect("missing lhs from infix expression"));
         let (mut fold, rhs) =
@@ -326,7 +326,7 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_prefix_expression(self, prefix: ast::PrefixExpression) -> (Self, TermId) {
+    fn fold_prefix_expression(self, prefix: ast::PrefixExpression) -> (Self, BodyTermId) {
         let (mut fold, inner) = self.fold_expression(
             prefix
                 .inner()
@@ -348,7 +348,7 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_if_expression(self, if_expr: ast::IfExpression) -> (Self, TermId) {
+    fn fold_if_expression(self, if_expr: ast::IfExpression) -> (Self, BodyTermId) {
         let (fold, condition) = self.fold_expression(if_expr.condition().unwrap());
         let (fold, then_branch) = fold.fold_expression(if_expr.then_branch().unwrap());
         let (mut fold, else_branch) = fold.fold_expression(if_expr.else_branch().unwrap());
@@ -362,7 +362,7 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_match_expression(self, match_expr: ast::MatchExpression) -> (Self, TermId) {
+    fn fold_match_expression(self, match_expr: ast::MatchExpression) -> (Self, BodyTermId) {
         let (fold, matchee) = self.fold_expression(match_expr.matchee().unwrap());
 
         let (mut fold, case_list) = match_expr.case_list().unwrap().cases().fold(
@@ -380,7 +380,7 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_call_expression(self, call: ast::CallExpression) -> (Self, TermId) {
+    fn fold_call_expression(self, call: ast::CallExpression) -> (Self, BodyTermId) {
         let (fold, callee) =
             self.fold_expression(call.callee().expect("missing callee from call expression"));
 
@@ -402,13 +402,13 @@ impl BodyFold {
         (fold, id)
     }
 
-    fn fold_path_expression(mut self, path: ast::PathExpression) -> (Self, TermId) {
+    fn fold_path_expression(mut self, path: ast::PathExpression) -> (Self, BodyTermId) {
         let path_expr = Term::Path(Path::from_ast(path.path().unwrap()));
         let id = self.expressions.alloc(path_expr);
         (self, id)
     }
 
-    fn fold_literal_expression(mut self, literal: ast::Literal) -> (Self, TermId) {
+    fn fold_literal_expression(mut self, literal: ast::Literal) -> (Self, BodyTermId) {
         let literal = match literal.literal_kind() {
             ast::TokenLiteral::Integer(integer) => {
                 let (radical, suffix) = integer.radical_and_suffix();

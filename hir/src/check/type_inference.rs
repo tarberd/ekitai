@@ -1,4 +1,5 @@
-use la_arena::{ArenaMap, Idx};
+use la_arena::{Arena, ArenaMap, Idx};
+use z3::ast::Ast;
 
 use crate::{
     semantic_ir::{
@@ -8,34 +9,72 @@ use crate::{
         path_resolver::{Resolver, ValueNamespaceItem},
         refinement::{self, Predicate},
         term::{
-            ArithmeticOperator, BinaryOperator, Body, CompareOperator, Literal, Pattern, PatternId,
-            Statement, Term, TermId, UnaryOperator,
+            ArithmeticOperator, BinaryOperator, Body, BodyPatternId, BodyTermId, CompareOperator,
+            Literal, Pattern, Statement, Term, UnaryOperator,
         },
         type_reference::TypeReference,
     },
     HirDatabase,
 };
 
-use super::{IntegerKind, LiquidType, ScalarType, Type};
+use super::{solver, IntegerKind, LiquidType, ScalarType, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constraint {
-    True,
-    False,
+    Predicate(Predicate),
+    Conjunction(ConstraintId, ConstraintId),
+    Implication(String, Type, Predicate, ConstraintId),
 }
 
 pub type ConstraintId = Idx<Constraint>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InferenceResult {
-    pub type_of_expression: ArenaMap<TermId, LiquidType>,
-    pub type_of_pattern: ArenaMap<PatternId, LiquidType>,
+    pub type_of_expression: ArenaMap<BodyTermId, LiquidType>,
+    pub type_of_pattern: ArenaMap<BodyPatternId, LiquidType>,
+    pub constraints: Arena<Constraint>,
 }
 
 impl InferenceResult {
     pub fn new(db: &dyn HirDatabase, function_id: FunctionDefinitionId) -> Self {
         let body = &db.body_of_definition(function_id);
         InferenceResultFold::fold_function(db, function_id, body).inference_result
+    }
+
+    pub fn entailment(&self) -> bool {
+        let solver_config = z3::Config::new();
+        let solver_context = z3::Context::new(&solver_config);
+
+        // match constraint {
+        //     Constraint::Implication(binder, ty, Predicate, Constraint) => translate,
+        //     _ => todo!(),
+        // };
+
+        let y = z3::ast::Int::new_const(&solver_context, "y");
+        let true_value = z3::ast::Bool::from_bool(&solver_context, true);
+
+        // V (x1:B) p1 -> p2[x2 := x1]
+        // G |- B{x1: p1} <: B{x2: p2}
+
+        // note the substitution
+        let z = z3::ast::Int::new_const(&solver_context, "y");
+        let one = z3::ast::Int::from_i64(&solver_context, 1);
+        let z_equals_one = z._eq(&one);
+
+        let p1_impl_p2 = true_value.implies(&z_equals_one);
+
+        let for_all = z3::ast::forall_const(&solver_context, &[&y], &[], &p1_impl_p2);
+
+        let solver = z3::Solver::new(&solver_context);
+        solver.assert(&for_all);
+
+        println!("{solver}");
+
+        match dbg!(solver.check()) {
+            z3::SatResult::Unsat => false,
+            z3::SatResult::Unknown => false,
+            z3::SatResult::Sat => true,
+        }
     }
 }
 
@@ -57,6 +96,7 @@ impl<'s> InferenceResultFold<'s> {
             inference_result: InferenceResult {
                 type_of_expression: ArenaMap::default(),
                 type_of_pattern: ArenaMap::default(),
+                constraints: Arena::default(),
             },
         }
     }
@@ -76,9 +116,9 @@ impl<'s> InferenceResultFold<'s> {
         self.resolver = Resolver::new_for_function(self.db.upcast(), self.function_id);
         let ty_resolver = TypeReferenceResolver::new(self.db, &self.resolver);
         let parameter_types = function
-            .parameters
+            .parameter_types
             .iter()
-            .map(|(pattern, type_reference)| {
+            .map(|type_reference| {
                 ty_resolver
                     .resolve_type_reference(type_reference)
                     .expect("missing parameter type")
@@ -97,7 +137,7 @@ impl<'s> InferenceResultFold<'s> {
         self
     }
 
-    fn fold_pattern(self, pattern_id: PatternId, expected_type: LiquidType) -> Self {
+    fn fold_pattern(self, pattern_id: BodyPatternId, expected_type: LiquidType) -> Self {
         let (mut fold, ty) = match &self.body.patterns[pattern_id] {
             Pattern::Deconstructor(path, subpatterns) => {
                 let path_resolver =
@@ -134,13 +174,33 @@ impl<'s> InferenceResultFold<'s> {
             .db
             .callable_definition_signature(fold.function_id.into())
             .return_type;
-        if ty != ret_ty {
-            panic!("expected {:?} found {:?}", ret_ty, ty);
-        }
-        fold
+        fold.check_subtype(root_expression, ty, ret_ty).0
     }
 
-    fn synthetize_term(self, expr_id: TermId) -> (Self, Constraint, LiquidType) {
+    fn check_subtype(
+        mut self,
+        expr_id: BodyTermId,
+        lesser: LiquidType,
+        greater: LiquidType,
+    ) -> (Self, ConstraintId) {
+        // match (lesser, greater) {
+        //     (LiquidType::Base(lesser), LiquidType::Base(greater)) => {
+        //         // build implication
+        //         // check if in context this implication is true
+        //         // let constraint_id = self
+        //         //     .inference_result
+        //         //     .constraints
+        //         //     .alloc(Constraint::Implication);
+        //         // (self, constraint_id)
+        //     }
+        //     (LiquidType::DependentFunction(_), LiquidType::DependentFunction(_)) => todo!(),
+        //     (LiquidType::Base(_), LiquidType::DependentFunction(_)) => todo!(),
+        //     (LiquidType::DependentFunction(_), LiquidType::Base(_)) => todo!(),
+        // }
+        todo!()
+    }
+
+    fn synthetize_term(self, expr_id: BodyTermId) -> (Self, Constraint, LiquidType) {
         let expr = &self.body.expressions[expr_id];
         let (mut fold, constraint, ty) = match expr {
             Term::Block {
@@ -265,7 +325,8 @@ impl<'s> InferenceResultFold<'s> {
                         }
                     }
 
-                    (fold, Constraint::True, first_case_type.clone())
+                    todo!()
+                    // (fold, Constraint::True, first_case_type.clone())
                 } else {
                     panic!("empty match case list")
                 }
@@ -277,33 +338,9 @@ impl<'s> InferenceResultFold<'s> {
             Term::Path(path) => {
                 let resolver =
                     Resolver::new_for_expression(self.db.upcast(), self.function_id, expr_id);
-                let path_resolver =
-                    ValuePathResolver::new(self.db, &self.inference_result, &resolver);
-                let ty = path_resolver.resolve_type_for_value_path(path);
-                (self, Constraint::True, ty)
+                self.fold_path_expression(&resolver, path)
             }
-            Term::Call { callee, arguments } => {
-                // let (fold, _c, callee_type) = self.synthetize_term(*callee);
-                // match callee_type {
-                //     Type::FunctionDefinition(f_id) => {
-                //         let sig = fold.db.callable_definition_signature(f_id);
-                //         let (fold, arg_tys) = arguments.iter().fold(
-                //             (fold, Vec::new()),
-                //             |(fold, mut arguments), arg| {
-                //                 let (fold, _c, arg_ty) = fold.synthetize_term(*arg);
-                //                 arguments.push(arg_ty);
-                //                 (fold, arguments)
-                //             },
-                //         );
-                //         if sig.parameter_types != arg_tys {
-                //             panic!("type of parameters to function call do not match the parameters in the function definition")
-                //         };
-                //         (fold, Constraint::True, sig.return_type)
-                //     }
-                //     x => panic!("function call not implemented for {:?} type", x),
-                // }
-                todo!()
-            }
+            Term::Call { callee, arguments } => self.fold_call_expression(*callee, arguments),
             Term::New(inner) => {
                 // let (fold, _c, inner) = self.synthetize_term(*inner);
                 // (fold, Constraint::True, Type::Pointer(Box::new(inner)))
@@ -365,7 +402,46 @@ impl<'s> InferenceResultFold<'s> {
                 todo!()
             }
         };
-        (self, Constraint::True, ty)
+        // (self, Constraint::True, ty)
+        todo!()
+    }
+
+    fn fold_call_expression(
+        self,
+        callee: Idx<Term>,
+        arguments: &[Idx<Term>],
+    ) -> (Self, Constraint, LiquidType) {
+        let (fold, _c, callee_type) = self.synthetize_term(callee);
+
+        match callee_type {
+            LiquidType::DependentFunction(f_id) => {
+                let sig = fold.db.callable_definition_signature(f_id);
+
+                let fold = arguments.iter().zip(sig.parameters).fold(
+                    fold,
+                    |fold, (arg, (_, param_ty))| {
+                        let (fold, _c, arg_ty) = fold.synthetize_term(*arg);
+                        // fold.check_subtype(arg_ty, param_ty)
+                        todo!()
+                    },
+                );
+
+                todo!()
+                // (fold, Constraint::True, sig.return_type)
+            }
+            x => panic!("function call not implemented for {:?} type", x),
+        }
+    }
+
+    fn fold_path_expression(
+        self,
+        resolver: &Resolver,
+        path: &Path,
+    ) -> (Self, Constraint, LiquidType) {
+        let path_resolver = ValuePathResolver::new(self.db, &self.inference_result, &resolver);
+        let ty = path_resolver.resolve_type_for_value_path(path);
+        todo!()
+        // (self, Constraint::Predicate(Predicate::), ty)
     }
 }
 
@@ -386,15 +462,27 @@ impl<'d> TypeReferenceResolver<'d> {
                     .resolver
                     .resolve_path_in_type_namespace(self.db.upcast(), path)?;
 
-                LiquidType::Base(self.db.type_of_definition(typed_item.into()))
+                LiquidType::Base(
+                    Name::new_inline("x"),
+                    self.db.type_of_definition(typed_item.into()),
+                    Predicate::Boolean(true),
+                )
             }
             TypeReference::Pointer(inner) => match self.resolve_type_reference(inner)? {
-                LiquidType::Base(base) => LiquidType::Base(Type::Pointer(Box::new(base))),
+                LiquidType::Base(pattern, base, predicate) => {
+                    LiquidType::Base(pattern, Type::Pointer(Box::new(base)), predicate)
+                }
                 LiquidType::DependentFunction(_) => todo!(),
             },
             TypeReference::Refinement(inner, name, predicate) => {
                 let inner = self.resolve_type_reference(inner)?;
-                inner
+                // match inner {
+                //     LiquidType::Base(inner_name, inner_type, inner_predicate) => {
+                //         LiquidType::Base(*name, inner_type, predicate.substitute(inner_name, name))
+                //     }
+                //     LiquidType::DependentFunction(_) => todo!(),
+                // }
+                todo!()
             }
         };
         Some(base)

@@ -34,7 +34,7 @@ use hir::{
         path::Path,
         term::{
             ArithmeticOperator, BinaryOperator, Body, CompareOperator, Literal, LogicOperator,
-            Ordering, Pattern, PatternId, Statement, Term, TermId, UnaryOperator,
+            Ordering, Pattern, BodyPatternId, Statement, Term, BodyTermId, UnaryOperator,
         },
     },
     HirDatabase, SourceDatabase, Upcast,
@@ -1202,7 +1202,7 @@ impl<
     pub fn fold_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        expr_id: TermId,
+        expr_id: BodyTermId,
     ) -> Option<Value<'context>> {
         let expr = &self.body.expressions[expr_id];
         match expr {
@@ -1271,9 +1271,9 @@ impl<
     fn fold_if_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        condition: &TermId,
-        then_branch: &TermId,
-        else_branch: &TermId,
+        condition: &BodyTermId,
+        then_branch: &BodyTermId,
+        else_branch: &BodyTermId,
     ) -> Option<Value<'context>> {
         let comparison = self
             .fold_expression(None, *condition)
@@ -1334,8 +1334,8 @@ impl<
     fn fold_match_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        matchee: TermId,
-        case_list: &[(PatternId, TermId)],
+        matchee: BodyTermId,
+        case_list: &[(BodyPatternId, BodyTermId)],
         resolver: Resolver,
     ) -> Option<Value<'context>> {
         let Value {
@@ -1420,7 +1420,7 @@ impl<
                             .prepend_basic_block(merge_block, format!("br.{}.tag", tag).as_str());
                         ((tag_value, case_block), (case_block, patterns))
                     })
-                    .unzip::<_, (BasicBlock, Vec<(PatternId, TermId)>), Vec<_>, Vec<_>>();
+                    .unzip::<_, (BasicBlock, Vec<(BodyPatternId, BodyTermId)>), Vec<_>, Vec<_>>();
 
                 self.builder
                     .build_switch(tag_value, else_block, switch_cases.as_slice().as_ref());
@@ -1585,8 +1585,8 @@ impl<
     fn fold_call_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        callee: &TermId,
-        arguments: &[TermId],
+        callee: &BodyTermId,
+        arguments: &[BodyTermId],
     ) -> Option<Value<'context>> {
         let callee_type = &self.inference.type_of_expression[*callee];
         let callable_definition = match callee_type {
@@ -1791,8 +1791,8 @@ impl<
         &self,
         indirect_value: Option<PointerValue<'context>>,
         operator: &BinaryOperator,
-        lhs: &TermId,
-        rhs: &TermId,
+        lhs: &BodyTermId,
+        rhs: &BodyTermId,
     ) -> Option<Value<'context>> {
         let lhs = self
             .fold_expression(None, *lhs)
@@ -1846,7 +1846,7 @@ impl<
         &self,
         indirect_value: Option<PointerValue<'context>>,
         operator: &UnaryOperator,
-        expression: &TermId,
+        expression: &BodyTermId,
     ) -> Option<Value<'context>> {
         let Value { value: expr, kind } = self.fold_expression(None, *expression).unwrap();
         let (kind, value) = match operator {
@@ -1932,7 +1932,7 @@ impl<
     fn fold_literal_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        literal_id: TermId,
+        literal_id: BodyTermId,
         literal: &Literal,
     ) -> Option<Value<'context>> {
         let literal_type = &self.inference.type_of_expression[literal_id];
@@ -1975,7 +1975,7 @@ impl<
     fn fold_new_expression(
         &self,
         indirect_value: Option<PointerValue<'context>>,
-        expr: TermId,
+        expr: BodyTermId,
     ) -> Option<Value<'context>> {
         let ty = &self.inference.type_of_expression[expr];
         let ty = self.type_cache.llvm_type(ty);

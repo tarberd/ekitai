@@ -2,20 +2,20 @@ use std::collections::HashMap;
 
 use la_arena::{Arena, Idx};
 
-use super::{term::{Body, Pattern, PatternId, Statement, Term, TermId}, name::Name};
+use super::{term::{Body, Pattern, BodyPatternId, Statement, Term, BodyTermId}, name::Name};
 
 pub type TermScopeId = Idx<TermScope>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TermScope {
     pub parent: Option<TermScopeId>,
-    pub entries: Vec<(Name, PatternId)>,
+    pub entries: Vec<(Name, BodyPatternId)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BodyContext {
     pub scopes: Arena<TermScope>,
-    pub scope_map: HashMap<TermId, TermScopeId>,
+    pub scope_map: HashMap<BodyTermId, TermScopeId>,
 }
 
 impl BodyContext {
@@ -38,7 +38,7 @@ impl BodyContext {
 
     pub fn expression_scope_ids(
         &self,
-        expression_id: TermId,
+        expression_id: BodyTermId,
     ) -> impl Iterator<Item = TermScopeId> + '_ {
         let scope_id = self.scope_map[&expression_id];
         std::iter::successors(Some(scope_id), move |&scope| self.scopes[scope].parent)
@@ -67,11 +67,11 @@ impl BodyContext {
 struct ExpressionScopeFold<'body> {
     pub body: &'body Body,
     pub scopes: Arena<TermScope>,
-    pub scope_map: HashMap<TermId, TermScopeId>,
+    pub scope_map: HashMap<BodyTermId, TermScopeId>,
 }
 
 impl<'body> ExpressionScopeFold<'body> {
-    fn fold_expression(mut self, expr_id: TermId, scope_id: TermScopeId) -> Self {
+    fn fold_expression(mut self, expr_id: BodyTermId, scope_id: TermScopeId) -> Self {
         self.scope_map.insert(expr_id, scope_id);
         match &self.body.expressions[expr_id] {
             Term::Block {
@@ -134,15 +134,15 @@ impl<'body> ExpressionScopeFold<'body> {
         }
     }
 
-    fn fold_pattern_bindings(&self, pattern_id: PatternId) -> Vec<(Name, PatternId)> {
+    fn fold_pattern_bindings(&self, pattern_id: BodyPatternId) -> Vec<(Name, BodyPatternId)> {
         self.fold_pattern_bindings_0(pattern_id, Vec::new())
     }
 
     fn fold_pattern_bindings_0(
         &self,
-        pattern_id: PatternId,
-        mut entries: Vec<(Name, PatternId)>,
-    ) -> Vec<(Name, PatternId)> {
+        pattern_id: BodyPatternId,
+        mut entries: Vec<(Name, BodyPatternId)>,
+    ) -> Vec<(Name, BodyPatternId)> {
         match &self.body.patterns[pattern_id] {
             Pattern::Deconstructor(_, subpatterns) => {
                 subpatterns.iter().fold(entries, |entries, pattern| {

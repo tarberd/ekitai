@@ -1,13 +1,13 @@
 pub mod type_inference;
+pub mod solver;
 
 use crate::semantic_ir::{
     definition_map::{CallableDefinitionId, TypeDefinitionId},
     intrinsic::{BuiltinInteger, BuiltinType},
-    name::Name,
     path_resolver::TypeNamespaceItem,
-    refinement::Predicate,
-    term::Pattern,
+    term::{BodyPatternId, Pattern}, refinement::Predicate, name::Name,
 };
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeableDefinition {
@@ -40,7 +40,7 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LiquidType {
-    Base(Type),
+    Base(Name, Type, Predicate),
     DependentFunction(CallableDefinitionId),
 }
 
@@ -67,6 +67,6 @@ impl From<BuiltinInteger> for IntegerKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DependentFunctionSignature {
-    pub parameters: Vec<(Pattern, LiquidType)>,
+    pub parameters: Vec<(BodyPatternId, LiquidType)>,
     pub return_type: LiquidType,
 }

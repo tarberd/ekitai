@@ -4,7 +4,7 @@ use super::{
     definition_map::{DefinitionMap, FunctionDefinitionId, TypeDefinitionId, ValueConstructorId},
     intrinsic::BuiltinType,
     path::Path,
-    term::{PatternId, TermId},
+    term::{BodyPatternId, BodyTermId},
     term_context_map::{BodyContext, TermScopeId},
 };
 
@@ -45,7 +45,7 @@ impl Resolver {
     pub fn new_for_expression(
         db: &dyn DefinitionsDatabase,
         function_id: FunctionDefinitionId,
-        expression_id: TermId,
+        expression_id: BodyTermId,
     ) -> Self {
         let resolver = Self::new_root_resolver(db);
         let expr_scope_map = db.expression_scope_map(function_id);
@@ -138,5 +138,5 @@ pub enum ValueNamespaceItem {
     Function(FunctionDefinitionId),
     ValueConstructor(ValueConstructorId),
     /// local binding in expression body
-    LocalBinding(PatternId),
+    LocalBinding(BodyPatternId),
 }

@@ -74,17 +74,19 @@ fn function_definition_signature(
     db: &dyn HirDatabase,
     function_id: FunctionDefinitionId,
 ) -> DependentFunctionSignature {
-    let resolver = Resolver::new_for_function(db.upcast(), function_id);
     let function = db.function_definition_data(function_id);
 
+    let resolver = Resolver::new_for_function(db.upcast(), function_id);
     let typeref_resolver = TypeReferenceResolver::new(db, &resolver);
 
-    let parameters = function
+    let body = db.body_of_definition(function_id);
+    let parameters = body
         .parameters
         .iter()
-        .map(|(pattern, type_reference)| {
+        .zip(function.parameter_types.iter())
+        .map(|(pattern_id, type_reference)| {
             (
-                pattern.clone(),
+                *pattern_id,
                 typeref_resolver
                     .resolve_type_reference(type_reference)
                     .expect("missing function definition argument type"),
@@ -106,33 +108,34 @@ fn value_constructor_signature(
     db: &dyn HirDatabase,
     value_constructor_id: ValueConstructorId,
 ) -> DependentFunctionSignature {
-    let resolver = Resolver::new_for_type(db.upcast(), value_constructor_id.type_definition_id);
-    let typeref_resolver = TypeReferenceResolver::new(db, &resolver);
-    let type_data = db.type_definition_data(value_constructor_id.type_definition_id);
-    let constructor = type_data.value_constructor(value_constructor_id.id);
+    // let resolver = Resolver::new_for_type(db.upcast(), value_constructor_id.type_definition_id);
+    // let typeref_resolver = TypeReferenceResolver::new(db, &resolver);
+    // let type_data = db.type_definition_data(value_constructor_id.type_definition_id);
+    // let constructor = type_data.value_constructor(value_constructor_id.id);
 
-    let parameters = constructor
-        .parameters
-        .iter()
-        .enumerate()
-        .map(|(index, type_reference)| {
-            (
-                Pattern::Bind(Name::new_inline(format!("arg_{}", index).as_str())),
-                typeref_resolver
-                    .resolve_type_reference(type_reference)
-                    .expect("missing value constructor definition data type"),
-            )
-        })
-        .collect();
+    // let parameters = constructor
+    //     .parameters
+    //     .iter()
+    //     .enumerate()
+    //     .map(|(index, type_reference)| {
+    //         (
+    //             Pattern::Bind(Name::new_inline(format!("arg_{}", index).as_str())),
+    //             typeref_resolver
+    //                 .resolve_type_reference(type_reference)
+    //                 .expect("missing value constructor definition data type"),
+    //         )
+    //     })
+    //     .collect();
 
-    let return_type = LiquidType::Base(Type::AbstractDataType(
-        value_constructor_id.type_definition_id,
-    ));
+    // let return_type = LiquidType::Base(Type::AbstractDataType(
+    //     value_constructor_id.type_definition_id,
+    // ));
 
-    DependentFunctionSignature {
-        parameters,
-        return_type,
-    }
+    // DependentFunctionSignature {
+    //     parameters,
+    //     return_type,
+    // }
+    todo!()
 }
 
 fn infer_body_expression_types(
