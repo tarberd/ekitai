@@ -9,7 +9,6 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Predicate {
-    FreeVariable(Name),
     Variable(Name),
     Boolean(bool),
     Integer(u128),

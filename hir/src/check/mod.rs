@@ -5,7 +5,7 @@ use crate::semantic_ir::{
     definition_map::{CallableDefinitionId, TypeDefinitionId},
     intrinsic::{BuiltinInteger, BuiltinType},
     path_resolver::TypeNamespaceItem,
-    term::{BodyPatternId, Pattern}, refinement::Predicate, name::Name,
+    term::{BodyPatternId}, refinement::Predicate, name::Name,
 };
 
 

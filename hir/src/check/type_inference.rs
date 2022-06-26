@@ -1,29 +1,31 @@
+use std::thread::panicking;
+
 use la_arena::{Arena, ArenaMap, Idx};
-use z3::ast::Ast;
 
 use crate::{
     semantic_ir::{
-        definition_map::{CallableDefinitionId, FunctionDefinitionId, TypeableValueDefinitionId},
+        definition_map::{FunctionDefinitionId, TypeableValueDefinitionId},
         name::Name,
         path::Path,
         path_resolver::{Resolver, ValueNamespaceItem},
         refinement::{self, Predicate},
         term::{
-            ArithmeticOperator, BinaryOperator, Body, BodyPatternId, BodyTermId, CompareOperator,
-            Literal, Pattern, Statement, Term, UnaryOperator,
+            BinaryOperator, Body, BodyPatternId, BodyTermId, CompareOperator, Literal, Pattern,
+            Statement, Term,
         },
         type_reference::TypeReference,
     },
     HirDatabase,
 };
 
-use super::{solver, IntegerKind, LiquidType, ScalarType, Type};
+use super::{IntegerKind, LiquidType, ScalarType, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Constraint {
+    True,
     Predicate(Predicate),
     Conjunction(ConstraintId, ConstraintId),
-    Implication(String, Type, Predicate, ConstraintId),
+    Implication(Name, Type, Predicate, ConstraintId),
 }
 
 pub type ConstraintId = Idx<Constraint>;
@@ -39,42 +41,6 @@ impl InferenceResult {
     pub fn new(db: &dyn HirDatabase, function_id: FunctionDefinitionId) -> Self {
         let body = &db.body_of_definition(function_id);
         InferenceResultFold::fold_function(db, function_id, body).inference_result
-    }
-
-    pub fn entailment(&self) -> bool {
-        let solver_config = z3::Config::new();
-        let solver_context = z3::Context::new(&solver_config);
-
-        // match constraint {
-        //     Constraint::Implication(binder, ty, Predicate, Constraint) => translate,
-        //     _ => todo!(),
-        // };
-
-        let y = z3::ast::Int::new_const(&solver_context, "y");
-        let true_value = z3::ast::Bool::from_bool(&solver_context, true);
-
-        // V (x1:B) p1 -> p2[x2 := x1]
-        // G |- B{x1: p1} <: B{x2: p2}
-
-        // note the substitution
-        let z = z3::ast::Int::new_const(&solver_context, "y");
-        let one = z3::ast::Int::from_i64(&solver_context, 1);
-        let z_equals_one = z._eq(&one);
-
-        let p1_impl_p2 = true_value.implies(&z_equals_one);
-
-        let for_all = z3::ast::forall_const(&solver_context, &[&y], &[], &p1_impl_p2);
-
-        let solver = z3::Solver::new(&solver_context);
-        solver.assert(&for_all);
-
-        println!("{solver}");
-
-        match dbg!(solver.check()) {
-            z3::SatResult::Unsat => false,
-            z3::SatResult::Unknown => false,
-            z3::SatResult::Sat => true,
-        }
     }
 }
 
@@ -183,20 +149,22 @@ impl<'s> InferenceResultFold<'s> {
         lesser: LiquidType,
         greater: LiquidType,
     ) -> (Self, ConstraintId) {
-        // match (lesser, greater) {
-        //     (LiquidType::Base(lesser), LiquidType::Base(greater)) => {
-        //         // build implication
-        //         // check if in context this implication is true
-        //         // let constraint_id = self
-        //         //     .inference_result
-        //         //     .constraints
-        //         //     .alloc(Constraint::Implication);
-        //         // (self, constraint_id)
-        //     }
-        //     (LiquidType::DependentFunction(_), LiquidType::DependentFunction(_)) => todo!(),
-        //     (LiquidType::Base(_), LiquidType::DependentFunction(_)) => todo!(),
-        //     (LiquidType::DependentFunction(_), LiquidType::Base(_)) => todo!(),
-        // }
+        match (lesser, greater) {
+            (
+                LiquidType::Base(lesser_binder, lesser_base, lesser_predicate),
+                LiquidType::Base(greater_binder, greater_base, greater_predicate),
+            ) => {
+                if lesser_base != greater_base {
+                    panic!("Types differ, {lesser_base:?} from {greater_base:?}");
+                }
+
+                let greater_predicate = Constraint::Predicate(greater_predicate);
+                let c_id = self.inference_result.constraints.alloc(greater_predicate);
+                Constraint::Implication(lesser_binder, lesser_base, lesser_predicate, c_id)
+            }
+            (LiquidType::DependentFunction(_), LiquidType::DependentFunction(_)) => todo!(),
+            (lesser, greater) => panic!("missmatch types {lesser:?} <: {greater:?}"),
+        };
         todo!()
     }
 
@@ -212,140 +180,142 @@ impl<'s> InferenceResultFold<'s> {
                     .fold(self, |fold, statement| fold.fold_statement(statement));
                 fold.synthetize_term(*trailing_expression)
             }
-            Term::If {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                let (fold, _c1, condition_ty) = self.synthetize_term(*condition);
-                let (fold, _c2, then_ty) = fold.synthetize_term(*then_branch);
-                let (fold, _c3, else_ty) = fold.synthetize_term(*else_branch);
-
-                // if condition_ty != Type::Scalar(ScalarType::Boolean) {
-                //     panic!("condition is not boolean");
-                // }
-
-                // if then_ty != else_ty {
-                //     panic!("mismatching types of then and else branches");
-                // }
-
-                // (fold, Constraint::True, then_ty)
-                todo!()
-            }
-            Term::Binary(op, lhs, rhs) => {
-                let (fold, _c1, lhs_ty) = self.synthetize_term(*lhs);
-                let (fold, _c2, rhs_ty) = fold.synthetize_term(*rhs);
-
-                if lhs_ty != rhs_ty {
-                    panic!()
-                }
-
-                // let application_type = match op {
-                //     BinaryOperator::Arithmetic(arith) => match arith {
-                //         ArithmeticOperator::Add => [
-                //             Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                //             Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                //             Type::Refinement(
-                //                 Box::new(Type::Scalar(ScalarType::Integer(IntegerKind::I64))),
-                //                 Name::new_inline("rhs"),
-                //                 Predicate::Binary(
-                //                     BinaryOperator::Arithmetic(ArithmeticOperator::Add),
-                //                     Box::new(Predicate::Variable(Name::new_inline("lhs"))),
-                //                     Box::new(Predicate::Variable(Name::new_inline("rhs"))),
-                //                 ),
-                //             ),
-                //         ],
-                //         ArithmeticOperator::Sub => todo!(),
-                //         ArithmeticOperator::Div => todo!(),
-                //         ArithmeticOperator::Mul => todo!(),
-                //         ArithmeticOperator::Rem => todo!(),
-                //     },
-                //     // BinaryOperator::Compare(_) => Type::Scalar(ScalarType::Boolean),
-                //     // BinaryOperator::Logic(_) => Type::Scalar(ScalarType::Boolean),
-                // };
-
-                // let ret_ty = Type::Refinement(
-                //     Box::new(Type::Scalar(ScalarType::Integer(IntegerKind::I64))),
-                //     Name::new_inline("rhs"),
-                //     Predicate::Binary(
-                //         BinaryOperator::Arithmetic(ArithmeticOperator::Add),
-                //         Box::new(Predicate::Variable(Name::new_inline("lhs"))),
-                //         Box::new(Predicate::Variable(Name::new_inline("rhs"))),
-                //     ),
-                // );
-
-                // (fold, Constraint::True, ret_ty)
-                todo!()
-            }
-            Term::Unary(op, expr) => {
-                // match op {
-                //     UnaryOperator::Minus => self.synthetize_term(*expr),
-                //     UnaryOperator::Negation => self.synthetize_term(*expr),
-                //     UnaryOperator::Reference => {
-                //         let (fold, _c, inner) = self.synthetize_term(*expr);
-                //         (fold, Constraint::True, Type::Pointer(Box::new(inner)))
-                //     }
-                //     UnaryOperator::Dereference => {
-                //         let (fold, _c, inner) = self.synthetize_term(*expr);
-                //         match inner {
-                //             Type::Pointer(inner) => (fold, Constraint::True, *inner),
-                //             ty => panic!("Can not dereference type: {:?}", ty),
-                //         }
-                //     }
-                // }
-                todo!()
-            }
-            Term::Match { matchee, case_list } => {
-                let (fold, _c, matchee_type) = self.synthetize_term(*matchee);
-
-                let (fold, case_types) = case_list.iter().fold(
-                    (fold, Vec::new()),
-                    |(mut fold, mut case_types), (pattern_id, case)| {
-                        fold.resolver = Resolver::new_for_expression(
-                            fold.db.upcast(),
-                            fold.function_id,
-                            expr_id,
-                        );
-                        let fold = fold.fold_pattern(*pattern_id, matchee_type.clone());
-                        let (fold, _c, case_type) = fold.synthetize_term(*case);
-                        case_types.push(case_type);
-                        (fold, case_types)
-                    },
-                );
-
-                let mut case_types = case_types.iter();
-
-                if let Some(first_case_type) = case_types.next() {
-                    for case_type in case_types {
-                        if case_type != first_case_type {
-                            panic!(
-                                "on match case: Expected {:?} found {:?}",
-                                first_case_type, case_type
-                            );
-                        }
-                    }
-
-                    todo!()
-                    // (fold, Constraint::True, first_case_type.clone())
-                } else {
-                    panic!("empty match case list")
-                }
-            }
-            Term::Literal(lit) => {
-                // self.synthetize_literal(lit)
-                todo!()
-            }
             Term::Path(path) => {
                 let resolver =
                     Resolver::new_for_expression(self.db.upcast(), self.function_id, expr_id);
-                self.fold_path_expression(&resolver, path)
+                let (fold, ty) = self.synth_path_expression(&resolver, path);
+                (fold, Constraint::True, ty)
             }
-            Term::Call { callee, arguments } => self.fold_call_expression(*callee, arguments),
-            Term::New(inner) => {
-                // let (fold, _c, inner) = self.synthetize_term(*inner);
-                // (fold, Constraint::True, Type::Pointer(Box::new(inner)))
-                todo!()
-            }
+            // Term::If {
+            //     condition,
+            //     then_branch,
+            //     else_branch,
+            // } => {
+            //     let (fold, _c1, condition_ty) = self.synthetize_term(*condition);
+            //     let (fold, _c2, then_ty) = fold.synthetize_term(*then_branch);
+            //     let (fold, _c3, else_ty) = fold.synthetize_term(*else_branch);
+
+            //     // if condition_ty != Type::Scalar(ScalarType::Boolean) {
+            //     //     panic!("condition is not boolean");
+            //     // }
+
+            //     // if then_ty != else_ty {
+            //     //     panic!("mismatching types of then and else branches");
+            //     // }
+
+            //     // (fold, Constraint::True, then_ty)
+            //     todo!()
+            // }
+            // Term::Binary(op, lhs, rhs) => {
+            //     let (fold, _c1, lhs_ty) = self.synthetize_term(*lhs);
+            //     let (fold, _c2, rhs_ty) = fold.synthetize_term(*rhs);
+
+            //     if lhs_ty != rhs_ty {
+            //         panic!()
+            //     }
+
+            //     // let application_type = match op {
+            //     //     BinaryOperator::Arithmetic(arith) => match arith {
+            //     //         ArithmeticOperator::Add => [
+            //     //             Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+            //     //             Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+            //     //             Type::Refinement(
+            //     //                 Box::new(Type::Scalar(ScalarType::Integer(IntegerKind::I64))),
+            //     //                 Name::new_inline("rhs"),
+            //     //                 Predicate::Binary(
+            //     //                     BinaryOperator::Arithmetic(ArithmeticOperator::Add),
+            //     //                     Box::new(Predicate::Variable(Name::new_inline("lhs"))),
+            //     //                     Box::new(Predicate::Variable(Name::new_inline("rhs"))),
+            //     //                 ),
+            //     //             ),
+            //     //         ],
+            //     //         ArithmeticOperator::Sub => todo!(),
+            //     //         ArithmeticOperator::Div => todo!(),
+            //     //         ArithmeticOperator::Mul => todo!(),
+            //     //         ArithmeticOperator::Rem => todo!(),
+            //     //     },
+            //     //     // BinaryOperator::Compare(_) => Type::Scalar(ScalarType::Boolean),
+            //     //     // BinaryOperator::Logic(_) => Type::Scalar(ScalarType::Boolean),
+            //     // };
+
+            //     // let ret_ty = Type::Refinement(
+            //     //     Box::new(Type::Scalar(ScalarType::Integer(IntegerKind::I64))),
+            //     //     Name::new_inline("rhs"),
+            //     //     Predicate::Binary(
+            //     //         BinaryOperator::Arithmetic(ArithmeticOperator::Add),
+            //     //         Box::new(Predicate::Variable(Name::new_inline("lhs"))),
+            //     //         Box::new(Predicate::Variable(Name::new_inline("rhs"))),
+            //     //     ),
+            //     // );
+
+            //     // (fold, Constraint::True, ret_ty)
+            //     todo!()
+            // }
+            // Term::Unary(op, expr) => {
+            //     // match op {
+            //     //     UnaryOperator::Minus => self.synthetize_term(*expr),
+            //     //     UnaryOperator::Negation => self.synthetize_term(*expr),
+            //     //     UnaryOperator::Reference => {
+            //     //         let (fold, _c, inner) = self.synthetize_term(*expr);
+            //     //         (fold, Constraint::True, Type::Pointer(Box::new(inner)))
+            //     //     }
+            //     //     UnaryOperator::Dereference => {
+            //     //         let (fold, _c, inner) = self.synthetize_term(*expr);
+            //     //         match inner {
+            //     //             Type::Pointer(inner) => (fold, Constraint::True, *inner),
+            //     //             ty => panic!("Can not dereference type: {:?}", ty),
+            //     //         }
+            //     //     }
+            //     // }
+            //     todo!()
+            // }
+            // Term::Match { matchee, case_list } => {
+            //     let (fold, _c, matchee_type) = self.synthetize_term(*matchee);
+
+            //     let (fold, case_types) = case_list.iter().fold(
+            //         (fold, Vec::new()),
+            //         |(mut fold, mut case_types), (pattern_id, case)| {
+            //             fold.resolver = Resolver::new_for_expression(
+            //                 fold.db.upcast(),
+            //                 fold.function_id,
+            //                 expr_id,
+            //             );
+            //             let fold = fold.fold_pattern(*pattern_id, matchee_type.clone());
+            //             let (fold, _c, case_type) = fold.synthetize_term(*case);
+            //             case_types.push(case_type);
+            //             (fold, case_types)
+            //         },
+            //     );
+
+            //     let mut case_types = case_types.iter();
+
+            //     if let Some(first_case_type) = case_types.next() {
+            //         for case_type in case_types {
+            //             if case_type != first_case_type {
+            //                 panic!(
+            //                     "on match case: Expected {:?} found {:?}",
+            //                     first_case_type, case_type
+            //                 );
+            //             }
+            //         }
+
+            //         todo!()
+            //         // (fold, Constraint::True, first_case_type.clone())
+            //     } else {
+            //         panic!("empty match case list")
+            //     }
+            // }
+            // Term::Literal(lit) => {
+            //     // self.synthetize_literal(lit)
+            //     todo!()
+            // }
+            // Term::Call { callee, arguments } => self.fold_call_expression(*callee, arguments),
+            // Term::New(inner) => {
+            //     // let (fold, _c, inner) = self.synthetize_term(*inner);
+            //     // (fold, Constraint::True, Type::Pointer(Box::new(inner)))
+            //     todo!()
+            // }
+            _ => todo!(),
         };
         fold.inference_result
             .type_of_expression
@@ -433,15 +403,10 @@ impl<'s> InferenceResultFold<'s> {
         }
     }
 
-    fn fold_path_expression(
-        self,
-        resolver: &Resolver,
-        path: &Path,
-    ) -> (Self, Constraint, LiquidType) {
+    fn synth_path_expression(self, resolver: &Resolver, path: &Path) -> (Self, LiquidType) {
         let path_resolver = ValuePathResolver::new(self.db, &self.inference_result, &resolver);
         let ty = path_resolver.resolve_type_for_value_path(path);
-        todo!()
-        // (self, Constraint::Predicate(Predicate::), ty)
+        (self, ty)
     }
 }
 
@@ -461,7 +426,6 @@ impl<'d> TypeReferenceResolver<'d> {
                 let typed_item = self
                     .resolver
                     .resolve_path_in_type_namespace(self.db.upcast(), path)?;
-
                 LiquidType::Base(
                     Name::new_inline("x"),
                     self.db.type_of_definition(typed_item.into()),
@@ -475,14 +439,17 @@ impl<'d> TypeReferenceResolver<'d> {
                 LiquidType::DependentFunction(_) => todo!(),
             },
             TypeReference::Refinement(inner, name, predicate) => {
-                let inner = self.resolve_type_reference(inner)?;
-                // match inner {
-                //     LiquidType::Base(inner_name, inner_type, inner_predicate) => {
-                //         LiquidType::Base(*name, inner_type, predicate.substitute(inner_name, name))
-                //     }
-                //     LiquidType::DependentFunction(_) => todo!(),
-                // }
-                todo!()
+                let inner = match &**inner {
+                    TypeReference::Path(path) => {
+                        let typed_item = self
+                            .resolver
+                            .resolve_path_in_type_namespace(self.db.upcast(), path)?;
+                        self.db.type_of_definition(typed_item.into())
+                    }
+                    TypeReference::Pointer(_) => todo!("pointer as refined base"),
+                    TypeReference::Refinement(_, _, _) => todo!("refinement as refined base"),
+                };
+                LiquidType::Base(name.clone(), inner, predicate.clone())
             }
         };
         Some(base)
@@ -527,7 +494,7 @@ impl<'d> ValuePathResolver<'d> {
                     ValueNamespaceItem::ValueConstructor(id) => {
                         TypeableValueDefinitionId::ValueConstructor(id)
                     }
-                    _ => panic!(),
+                    ValueNamespaceItem::LocalBinding(_) => unreachable!(),
                 };
 
                 self.db.type_of_value(typeable_value)

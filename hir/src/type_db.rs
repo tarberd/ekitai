@@ -45,13 +45,11 @@ fn type_of_definition(_db: &dyn HirDatabase, definition: TypeableDefinition) -> 
 
 fn type_of_value(_db: &dyn HirDatabase, value: TypeableValueDefinitionId) -> LiquidType {
     match value {
-        TypeableValueDefinitionId::Function(function_location_id) => LiquidType::DependentFunction(
-            CallableDefinitionId::FunctionDefinition(function_location_id),
-        ),
+        TypeableValueDefinitionId::Function(function_location_id) => {
+            LiquidType::DependentFunction(function_location_id.into())
+        }
         TypeableValueDefinitionId::ValueConstructor(value_constructor_id) => {
-            LiquidType::DependentFunction(CallableDefinitionId::ValueConstructor(
-                value_constructor_id,
-            ))
+            LiquidType::DependentFunction(value_constructor_id.into())
         }
     }
 }

@@ -1,7 +1,9 @@
 use hir::{
-    DefinitionsDatabase, DefinitionsDatabaseStorage, HirDatabase, HirDatabaseStorage,
-    InternerStorage, SourceDatabase, SourceDatabaseStorage, Upcast, check::type_inference::{InferenceResult, Constraint},
+    check::type_inference::Constraint, DefinitionsDatabase, DefinitionsDatabaseStorage,
+    HirDatabase, HirDatabaseStorage, InternerStorage, SourceDatabase, SourceDatabaseStorage,
+    Upcast, semantic_ir::refinement::Predicate,
 };
+use z3::ast::Ast;
 
 #[salsa::database(
     SourceDatabaseStorage,
@@ -42,7 +44,8 @@ impl salsa::Database for Database {}
 
 #[test]
 fn test_id_no_refinements() {
-    let source = "fn id(x: {y:i64 | true}) -> {z:i64 | true} { x }";
+    let source = "fn id(x: {y:i64 | y == 2}) -> {z:i64 | z ==4 } { x }";
+    // id: x:{y:i64 | y == 2} -> {z:i64 | z == 4} = (\x. x)
 
     let mut db = Database::default();
     db.set_source_file_text(source.into());
@@ -54,9 +57,75 @@ fn test_id_no_refinements() {
     {
         let inference_result = db.infer_body_expression_types(*fid);
 
-        let body = db.body_of_definition(*fid);
+        let constraint = inference_result
+            .constraints
+            .iter()
+            .map(|(_, constraint)| constraint)
+            .cloned()
+            .last()
+            .unwrap();
 
+        let solver_config = z3::Config::new();
+        let solver_context = z3::Context::new(&solver_config);
 
-        assert_eq!(inference_result.entailment(), false);
+        match constraint {
+            Constraint::Implication(binder, ty, predicate, Constraint) => match predicate {
+                Predicate::Variable(_) => todo!(),
+                Predicate::Boolean(_) => todo!(),
+                Predicate::Integer(_) => todo!(),
+                Predicate::Binary(_, _, _) => todo!(),
+                Predicate::Unary(_, _) => todo!(),
+            },
+            Constraint::Predicate(_) => todo!(),
+            Constraint::Conjunction(_, _) => todo!(),
+            Constraint::True => todo!(),
+        };
+
+        let y = z3::ast::Int::new_const(&solver_context, "y");
+        let true_value = z3::ast::Bool::from_bool(&solver_context, true);
+
+        // V (x1:B) p1 -> p2[x2 := x1]
+        // G |- B{x1: p1} <: B{x2: p2}
+
+        // note the substitution
+        let z = z3::ast::Int::new_const(&solver_context, "y");
+        let one = z3::ast::Int::from_i64(&solver_context, 1);
+        let z_equals_one = z._eq(&one);
+
+        let p1_impl_p2 = true_value.implies(&z_equals_one);
+
+        let for_all = z3::ast::forall_const(&solver_context, &[&y], &[], &p1_impl_p2);
+
+        let solver = z3::Solver::new(&solver_context);
+        solver.assert(&for_all);
+
+        println!("{solver}");
+
+        let entailment = match dbg!(solver.check()) {
+            z3::SatResult::Unsat => false,
+            z3::SatResult::Unknown => false,
+            z3::SatResult::Sat => true,
+        };
+        assert_eq!(entailment, false);
     }
 }
+
+// E |-
+// E |- (\x. x): x:{y:i64 | y == 2} -> {z:i64 | z == 4} <=
+// E |- (\x. x): x:{y:i64 | y == 2} -> {z:i64 | z == 4} <=
+
+// E |- (\x. x): x:{y:i64 | y == 2} -> {z:i64 | z == 4} <=
+// E |- let id= (\x. x): x:{y:i64 | y == 2} -> {z:i64 | z == 4} in 1
+// ---------------------
+// E |- let id= (\x. x): x:{y:i64 | y == 2} -> {z:i64 | z == 4} in 1
+
+//
+//  E; x:Int{x:x=5}; x:Int{x:x=5} |- x => Int{x:x=5}
+//  E; x:Int{x:x=5} |- x => Int{x:x=5}
+//  -------------------
+//  E; x:Int{x:x=5} |- let x = x in x => Int{x:x=5}
+//
+//  E; x:Int{x:x=5} |- let x = x in x => Int{x:x=5}
+//  E |- 5 => Int{x:x=5}
+//  ----------------
+//  E |- let x = 5 in let x = x in x => Int{x:x=5}
