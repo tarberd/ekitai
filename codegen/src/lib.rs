@@ -296,7 +296,6 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
                 let ptr_type = inner.ptr_type(AddressSpace::Generic);
                 ptr_type.as_basic_type_enum()
             }
-            Type::Refinement(inner, _, _) => self.llvm_type(inner),
         }
     }
 
@@ -306,7 +305,6 @@ impl<'db, 'context> CodeGenTypeCache<'db, 'context> {
             Type::FunctionDefinition(_) => todo!(),
             Type::Scalar(_) => todo!(),
             Type::Pointer(_) => todo!(),
-            Type::Refinement(inner, _, _) => self.type_info(inner),
         }
     }
 
@@ -1961,7 +1959,6 @@ impl<
                 _ => panic!(),
             },
             Type::Pointer(_) => todo!(),
-            Type::Refinement(_, _, _) => todo!(),
         };
         match indirect_value {
             Some(ptr) => {
