@@ -1,11 +1,22 @@
 use la_arena::ArenaMap;
 
 use crate::{
-    semantic_ir::{path_resolver::{Resolver, ValueNamespaceItem}, type_reference::TypeReference, term::{TermId, PatternId, Body, Pattern, Term, BinaryOperator, UnaryOperator, Literal, CompareOperator, Statement}, definition_map::{FunctionDefinitionId, CallableDefinitionId, TypeableValueDefinitionId}, name::Name, refinement::Predicate, path::Path},
+    semantic_ir::{
+        definition_map::{CallableDefinitionId, FunctionDefinitionId, TypeableValueDefinitionId},
+        name::Name,
+        path::Path,
+        path_resolver::{Resolver, ValueNamespaceItem},
+        refinement::Predicate,
+        term::{
+            BinaryOperator, Body, CompareOperator, Literal, Pattern, PatternId, Statement, Term,
+            TermId, UnaryOperator,
+        },
+        type_reference::TypeReference,
+    },
     HirDatabase,
 };
 
-use super::{Type, ScalarType, IntegerKind};
+use super::{IntegerKind, ScalarType, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InferenceResult {
@@ -226,30 +237,11 @@ impl<'s> InferenceResultFold<'s> {
             }
             Term::Literal(lit) => {
                 let ty = match lit {
-                    Literal::Integer(value, some_kind) => {
-                        let inner = match some_kind {
-                            Some(int_kind) => Type::Scalar(ScalarType::Integer((*int_kind).into())),
-                            None => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                        };
-
-                        let name = Name { id: "lit".into() };
-                        let predicate = Predicate::Binary(
-                            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
-                            Box::new(Predicate::Variable(name.clone())),
-                            Box::new(Predicate::Integer(*value)),
-                        );
-                        Type::Refinement(Box::new(inner), name, predicate)
-                    }
-                    Literal::Bool(value) => {
-                        let inner = Type::Scalar(ScalarType::Boolean);
-                        let name = Name { id: "lit".into() };
-                        let predicate = Predicate::Binary(
-                            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
-                            Box::new(Predicate::Variable(name.clone())),
-                            Box::new(Predicate::Boolean(*value)),
-                        );
-                        Type::Refinement(Box::new(inner), name, predicate)
-                    }
+                    Literal::Integer(value, some_kind) => match some_kind {
+                        Some(int_kind) => Type::Scalar(ScalarType::Integer((*int_kind).into())),
+                        None => Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                    },
+                    Literal::Bool(value) => Type::Scalar(ScalarType::Boolean),
                 };
                 (self, ty)
             }
@@ -334,9 +326,8 @@ impl<'d> TypeReferenceResolver<'d> {
                 let inner = self.resolve_type_reference(inner)?;
                 Type::Pointer(Box::new(inner))
             }
-            TypeReference::Refinement(inner, name, predicate) => {
-                let inner = self.resolve_type_reference(inner)?;
-                Type::Refinement(Box::new(inner), name.clone(), predicate.clone())
+            TypeReference::Refinement(inner, _name, _predicate) => {
+                self.resolve_type_reference(inner)?
             }
         };
         Some(ty)

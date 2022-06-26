@@ -33,7 +33,6 @@ impl From<TypeDefinitionId> for TypeableDefinition {
 pub enum Type {
     AbstractDataType(TypeDefinitionId),
     FunctionDefinition(CallableDefinitionId),
-    Refinement(Box<Type>, Name, Predicate),
     Pointer(Box<Type>),
     Scalar(ScalarType),
 }
