@@ -1,5 +1,6 @@
 pub mod check;
 mod definitions_db;
+pub mod liquid;
 pub mod semantic_ir;
 mod source_db;
 mod type_db;
