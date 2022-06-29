@@ -11,3 +11,4 @@ syntax = { path = "../syntax" }
 smol_str = "0.1.21"
 la-arena = "0.2.1"
 salsa = "0.16.1"
+z3 = "0.11.2"
