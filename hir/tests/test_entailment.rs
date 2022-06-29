@@ -42,7 +42,7 @@ impl salsa::Database for Database {}
 
 #[test]
 fn test_function_body_entailment() {
-    let source = "fn id(x: {y: i64 | y == 0}) -> {z: i64| z == x} {x}";
+    let source = "fn id(x: {y: i64 | y == 3 && y == 2}) -> {z: i64| z == 5} { x }";
 
     let mut db = Database::default();
     db.set_source_file_text(source.into());
@@ -52,6 +52,6 @@ fn test_function_body_entailment() {
         .root_module_item_scope()
         .iter_function_locations()
     {
-        assert!(hir::liquid::check_refinements(&db, *fid));
+        assert_eq!(hir::liquid::check_refinements(&db, *fid), true);
     }
 }

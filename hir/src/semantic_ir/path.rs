@@ -24,4 +24,21 @@ impl Path {
             segments
         }
     }
+
+    pub(crate) fn as_name(&self) -> Name {
+        Name::new_inline(
+            self.segments
+                .iter()
+                .fold(String::new(), |mut fold, segment| {
+                    if fold.is_empty() {
+                        fold.push_str(segment.id.as_str());
+                        fold
+                    } else {
+                        let segment = &segment.id;
+                        format!("{fold}::{segment}")
+                    }
+                })
+                .as_str(),
+        )
+    }
 }
