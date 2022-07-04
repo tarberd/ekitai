@@ -1,14 +1,18 @@
+use syntax::ast::Integer;
 use z3::ast::{Ast, Bool, Int};
 
 use crate::{
-    check::{type_inference::TypeReferenceResolver, Type},
+    check::{type_inference::TypeReferenceResolver, IntegerKind, ScalarType, Type},
     semantic_ir::{
         definition_map::{FunctionDefinitionData, FunctionDefinitionId},
+        intrinsic::BuiltinInteger,
         name::Name,
         path::Path,
         path_resolver::Resolver,
-        refinement::Predicate,
-        term::{BinaryOperator, Body, CompareOperator, LogicOperator, Pattern, Term, TermId},
+        refinement::{Predicate, UnaryOperator},
+        term::{
+            BinaryOperator, Body, CompareOperator, Literal, LogicOperator, Pattern, Term, TermId,
+        },
         type_reference::{self, TypeReference},
     },
     HirDatabase,
@@ -304,7 +308,15 @@ fn lower_predicate<'ctx>(
                 _ => todo!(),
             }
         }
-        Predicate::Unary(_, _) => todo!(),
+        Predicate::Unary(op, predicate) => {
+            let predicate = lower_predicate(context, variables, *predicate);
+            match (op, predicate) {
+                (UnaryOperator::Minus, Z3Predicate::Int(int)) => int.unary_minus().into(),
+                (UnaryOperator::Negation, Z3Predicate::Bool(boolean)) => boolean.not().into(),
+                (UnaryOperator::Minus, Z3Predicate::Bool(_)) => todo!(),
+                (UnaryOperator::Negation, Z3Predicate::Int(_)) => todo!(),
+            }
+        }
     }
 }
 
@@ -399,7 +411,6 @@ impl<'a> Fold<'a> {
                 statements: _,
                 trailing_expression,
             } => self.synth_type(*trailing_expression),
-
             Term::Path(path) => {
                 let RefinedBase {
                     base,
@@ -422,6 +433,10 @@ impl<'a> Fold<'a> {
                 };
                 (self, path_type, None)
             }
+            Term::Literal(lit) => match lit {
+                Literal::Integer(value, sufix) => (self, primitive_integer(*value, *sufix), None),
+                Literal::Bool(value) => (self, primitive_bool(*value), None),
+            },
             _ => todo!(),
         }
     }
@@ -438,6 +453,10 @@ impl<'a> Fold<'a> {
             predicate: greater_predicate,
         } = greater;
 
+        if lesser_base != greater_base {
+            panic!("missmatch base types: {lesser_base:?} <: {greater_base:?}")
+        }
+
         let constraint = Constraint::Implication {
             binder: lesser_binder.clone(),
             base: lesser_base,
@@ -450,6 +469,36 @@ impl<'a> Fold<'a> {
         };
 
         (self, constraint)
+    }
+}
+
+fn primitive_bool(value: bool) -> RefinedBase {
+    let binder = Name::new_inline("lit");
+    RefinedBase {
+        base: Type::Scalar(ScalarType::Boolean),
+        binder: binder.clone(),
+        predicate: match value {
+            true => Predicate::Variable(binder),
+            false => Predicate::Unary(
+                UnaryOperator::Negation,
+                Box::new(Predicate::Variable(binder)),
+            ),
+        },
+    }
+}
+
+fn primitive_integer(value: u128, sufix: Option<BuiltinInteger>) -> RefinedBase {
+    let binder = Name::new_inline("lit");
+    RefinedBase {
+        base: Type::Scalar(ScalarType::Integer(
+            sufix.map_or(IntegerKind::I64, Into::into),
+        )),
+        binder: binder.clone(),
+        predicate: Predicate::Binary(
+            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
+            Box::new(Predicate::Variable(binder)),
+            Box::new(Predicate::Integer(value)),
+        ),
     }
 }
 

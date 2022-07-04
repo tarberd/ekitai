@@ -87,3 +87,83 @@ fn test_function_or_bigger_small() {
         assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
     }
 }
+
+#[test]
+fn test_function_or_bigger_small_err() {
+    let source = "fn id(x: {y:i64| y > 10 || y < 10 }) -> {z:i64| z == 10} { x }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(false, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
+
+#[test]
+fn test_function_single_literal() {
+    let source = "fn id() -> {z:i64| z == 0} { 0 }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
+
+#[test]
+fn test_function_single_literal_err() {
+    let source = "fn id() -> {z:i64| z == 10} { 0 }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(false, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
+
+#[test]
+fn test_function_single_bool() {
+    let source = "fn id() -> {z:bool| z} { true }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
+
+#[test]
+fn test_function_single_bool_err() {
+    let source = "fn id() -> {z:bool| !z} { true }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(false, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
