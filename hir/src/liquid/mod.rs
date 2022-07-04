@@ -52,8 +52,9 @@ enum Constraint {
         binder: Name,
         base: Type,
         antecedent: Predicate,
-        consequent: Box<Constraint>,
+        consequent: Box<Self>,
     },
+    Conjunction(Box<Self>, Box<Self>),
 }
 
 fn something(
@@ -76,12 +77,16 @@ fn something(
     }
 }
 
-pub fn check_refinements(db: &dyn HirDatabase, function_id: FunctionDefinitionId) -> bool {
+pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId) -> bool {
     let resolver = Resolver::new_for_function(db.upcast(), function_id);
     let function = db.function_definition_data(function_id);
     let output_type = something(db, &resolver, &function.return_type);
 
     let body = db.body_of_definition(function_id.into());
+    let param_types = function
+        .parameter_types
+        .iter()
+        .map(|reference| something(db, &resolver, reference));
 
     let context = body
         .parameters
@@ -95,19 +100,40 @@ pub fn check_refinements(db: &dyn HirDatabase, function_id: FunctionDefinitionId
                 },
             }
         })
-        .zip(
-            function
-                .parameter_types
-                .iter()
-                .map(|reference| something(db, &resolver, reference)),
-        )
+        .zip(param_types.clone())
         .collect();
 
-    let (Fold { body: _, context }, constraint) = Fold {
+    let (Fold { context, .. }, constraint) = Fold {
         body: &body,
         context,
     }
     .check_type(body.root_expression, output_type);
+
+    let constraint = body
+        .parameters
+        .iter()
+        .map(|id| {
+            let pat = &body.patterns[*id];
+            match pat {
+                Pattern::Deconstructor(_, _) => panic!("no deconstructor on parameter"),
+                Pattern::Bind(name) => name.clone(),
+            }
+        })
+        .zip(param_types)
+        .fold(constraint, |c, (name, ty)| {
+            let RefinedBase {
+                base,
+                binder,
+                predicate,
+            } = ty;
+            let predicate = substitution(binder, name.clone(), predicate);
+            Constraint::Implication {
+                binder: name,
+                base,
+                antecedent: predicate,
+                consequent: Box::new(c),
+            }
+        });
 
     entailment(context, constraint)
 }
@@ -166,11 +192,14 @@ fn solve(constraint: Constraint) -> bool {
     for constraint in flattened_constraint {
         let constraint = lower(&solver_context, constraint);
 
+        solver.push();
         solver.assert(&constraint);
+        println!("Solver:\n{solver}");
+        let result = solver.check();
+        println!("Result: {result:?}");
+        solver.pop(1);
 
-        println!("{solver}");
-
-        match dbg!(solver.check()) {
+        match result {
             z3::SatResult::Unsat => continue,
             z3::SatResult::Unknown => return false,
             z3::SatResult::Sat => return false,
@@ -238,20 +267,40 @@ fn lower_predicate<'ctx>(
             let rhs = lower_predicate(context, variables, *rhs);
             match op {
                 BinaryOperator::Arithmetic(_) => todo!(),
-                BinaryOperator::Logic(LogicOperator::And) => {
+                BinaryOperator::Logic(op) => {
                     let (lhs, rhs) = match (lhs, rhs) {
                         (Z3Predicate::Bool(lhs), Z3Predicate::Bool(rhs)) => (lhs, rhs),
                         _ => todo!(),
                     };
-                    Bool::and(context, &[&lhs, &rhs]).into()
+                    match op {
+                        LogicOperator::And => Bool::and(context, &[&lhs, &rhs]).into(),
+                        LogicOperator::Or => Bool::or(context, &[&lhs, &rhs]).into(),
+                    }
                 }
-                BinaryOperator::Compare(CompareOperator::Equality { negated: false }) => {
-                    match (lhs, rhs) {
+                BinaryOperator::Compare(compare) => match compare {
+                    CompareOperator::Equality { negated: false } => match (lhs, rhs) {
                         (Z3Predicate::Bool(lhs), Z3Predicate::Bool(rhs)) => lhs._eq(&rhs).into(),
                         (Z3Predicate::Int(lhs), Z3Predicate::Int(rhs)) => lhs._eq(&rhs).into(),
                         _ => panic!("mismatch types in z3"),
-                    }
-                }
+                    },
+                    CompareOperator::Order { ordering, strict } => match ordering {
+                        crate::semantic_ir::term::Ordering::Less => match (lhs, rhs) {
+                            (Z3Predicate::Int(lhs), Z3Predicate::Int(rhs)) => match strict {
+                                true => lhs.lt(&rhs).into(),
+                                false => lhs.le(&rhs).into(),
+                            },
+                            _ => todo!(),
+                        },
+                        crate::semantic_ir::term::Ordering::Greater => match (lhs, rhs) {
+                            (Z3Predicate::Int(lhs), Z3Predicate::Int(rhs)) => match strict {
+                                true => lhs.gt(&rhs).into(),
+                                false => lhs.ge(&rhs).into(),
+                            },
+                            _ => todo!(),
+                        },
+                    },
+                    _ => todo!(),
+                },
                 _ => todo!(),
             }
         }
@@ -312,6 +361,10 @@ fn flatten_fold(
             ));
             flattened
         }
+        Constraint::Conjunction(first, second) => {
+            let flattened = flatten_fold(flattened, *first);
+            flatten_fold(flattened, *second)
+        }
     }
 }
 
@@ -324,13 +377,50 @@ impl<'a> Fold<'a> {
     fn check_type(self, term_id: TermId, output_type: RefinedBase) -> (Self, Constraint) {
         let term = &self.body.expressions[term_id];
         match term {
+            _ => {
+                let (fold, t, c) = self.synth_type(term_id);
+                let (fold, c2) = fold.subtype(t, output_type);
+
+                (
+                    fold,
+                    match c {
+                        Some(c) => Constraint::Conjunction(Box::new(c), Box::new(c2)),
+                        None => c2,
+                    },
+                )
+            }
+        }
+    }
+
+    fn synth_type(self, term_id: TermId) -> (Self, RefinedBase, Option<Constraint>) {
+        let term = &self.body.expressions[term_id];
+        match term {
             Term::Block {
                 statements: _,
                 trailing_expression,
-            } => self.check_type(*trailing_expression, output_type),
+            } => self.synth_type(*trailing_expression),
+
             Term::Path(path) => {
-                let path_type = self.context.get(path).unwrap().clone();
-                self.subtype(path_type, output_type)
+                let RefinedBase {
+                    base,
+                    binder,
+                    predicate,
+                } = self.context.get(path).unwrap().clone();
+
+                let path_type = RefinedBase {
+                    base,
+                    binder: binder.clone(),
+                    predicate: Predicate::Binary(
+                        BinaryOperator::Logic(LogicOperator::And),
+                        Box::new(predicate),
+                        Box::new(Predicate::Binary(
+                            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
+                            Box::new(Predicate::Variable(binder)),
+                            Box::new(Predicate::Variable(path.as_name())),
+                        )),
+                    ),
+                };
+                (self, path_type, None)
             }
             _ => todo!(),
         }
@@ -363,32 +453,23 @@ impl<'a> Fold<'a> {
     }
 }
 
-fn substitution(
-    greater_binder: Name,
-    lesser_binder: Name,
-    greater_predicate: Predicate,
-) -> Predicate {
-    match greater_predicate.clone() {
+fn substitution(old: Name, new: Name, predicate: Predicate) -> Predicate {
+    match predicate.clone() {
         Predicate::Variable(name) => {
-            if name == greater_binder {
-                Predicate::Variable(lesser_binder)
+            if name == old {
+                Predicate::Variable(new)
             } else {
-                greater_predicate
+                predicate
             }
         }
         Predicate::Binary(op, lhs, rhs) => Predicate::Binary(
             op,
-            Box::new(substitution(
-                greater_binder.clone(),
-                lesser_binder.clone(),
-                *lhs,
-            )),
-            Box::new(substitution(greater_binder, lesser_binder, *rhs)),
+            Box::new(substitution(old.clone(), new.clone(), *lhs)),
+            Box::new(substitution(old, new, *rhs)),
         ),
-        Predicate::Unary(op, predicate) => Predicate::Unary(
-            op,
-            Box::new(substitution(greater_binder, lesser_binder, *predicate)),
-        ),
-        Predicate::Boolean(_) | Predicate::Integer(_) => greater_predicate,
+        Predicate::Unary(op, predicate) => {
+            Predicate::Unary(op, Box::new(substitution(old, new, *predicate)))
+        }
+        Predicate::Boolean(_) | Predicate::Integer(_) => predicate,
     }
 }
