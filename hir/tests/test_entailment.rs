@@ -167,3 +167,35 @@ fn test_function_single_bool_err() {
         assert_eq!(false, hir::liquid::check_abstraction(&db, *fid));
     }
 }
+
+#[test]
+fn test_function_minus_call() {
+    let source = "fn id(x: {y:i64| true}) -> {z:i64| z == -x} { ---x }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
+
+#[test]
+fn test_function_minus_call_literal() {
+    let source = "fn id() -> {z:i64| z == -5} { -5 }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
