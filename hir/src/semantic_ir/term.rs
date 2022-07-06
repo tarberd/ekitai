@@ -18,31 +18,12 @@ impl Body {
                 expressions,
                 patterns,
                 parameters,
+                ..
             },
             root_expression,
         ) = BodyFold::new()
             .fold_function_parameters(&function)
             .fold_block_expression(function.body().unwrap());
-
-        Self {
-            patterns,
-            parameters,
-            expressions,
-            root_expression,
-        }
-    }
-
-    pub fn lower_refinement_body(refinement: ast::RefinementType) -> Self {
-        let (
-            BodyFold {
-                expressions,
-                patterns,
-                parameters,
-            },
-            root_expression,
-        ) = BodyFold::new()
-            .fold_refinement_binding(&refinement)
-            .fold_expression(refinement.predicate().unwrap());
 
         Self {
             patterns,
@@ -161,6 +142,7 @@ struct BodyFold {
     pub expressions: Arena<Term>,
     pub patterns: Arena<Pattern>,
     pub parameters: Vec<PatternId>,
+    pub argument_binder_count: u128,
 }
 
 impl BodyFold {
@@ -178,13 +160,6 @@ impl BodyFold {
                 fold.parameters.push(pattern_id);
                 fold
             })
-    }
-
-    fn fold_refinement_binding(self, refinement: &ast::RefinementType) -> Self {
-        let pattern = refinement.inner_pattern().unwrap();
-        let (mut fold, pattern_id) = self.fold_pattern(pattern);
-        fold.parameters.push(pattern_id);
-        fold
     }
 
     fn fold_pattern(self, pattern: ast::Pattern) -> (Self, PatternId) {
@@ -333,6 +308,9 @@ impl BodyFold {
                 .expect("missing inner expression from prefix expression"),
         );
 
+        let (pattern_id, path) = fold.make_argument_pattern();
+        let statements = vec![Statement::Let(pattern_id, inner)];
+
         let op = match prefix
             .operator()
             .expect("missing operator from infix expression")
@@ -343,9 +321,18 @@ impl BodyFold {
             ast::UnaryOperator::Ampersand(_) => UnaryOperator::Reference,
         };
 
-        let unary_expr = Term::Unary(op, inner);
-        let id = fold.expressions.alloc(unary_expr);
-        (fold, id)
+        let argument = Term::Path(path);
+        let inner_id = fold.expressions.alloc(argument);
+
+        let unary_expr = Term::Unary(op, inner_id);
+        let unary_expr_id = fold.expressions.alloc(unary_expr);
+
+        let call_block = Term::Block {
+            statements,
+            trailing_expression: unary_expr_id,
+        };
+        let call_block_id = fold.expressions.alloc(call_block);
+        (fold, call_block_id)
     }
 
     fn fold_if_expression(self, if_expr: ast::IfExpression) -> (Self, TermId) {
@@ -456,5 +443,18 @@ impl BodyFold {
         let new_expr = Term::New(inner_id);
         let id = fold.expressions.alloc(new_expr);
         (fold, id)
+    }
+
+    fn make_argument_pattern(&mut self) -> (Idx<Pattern>, Path) {
+        let name = Name::new_inline(format!("__arg{}", self.argument_binder_count).as_str());
+        self.argument_binder_count += 1;
+        let pattern = Pattern::Bind(name.clone());
+        let pattern_id = self.patterns.alloc(pattern);
+        (
+            pattern_id,
+            Path {
+                segments: vec![name],
+            },
+        )
     }
 }

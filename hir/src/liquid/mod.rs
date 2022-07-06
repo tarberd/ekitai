@@ -1,19 +1,19 @@
-use syntax::ast::Integer;
 use z3::ast::{Ast, Bool, Int};
 
 use crate::{
     check::{type_inference::TypeReferenceResolver, IntegerKind, ScalarType, Type},
     semantic_ir::{
-        definition_map::{FunctionDefinitionData, FunctionDefinitionId},
+        definition_map::FunctionDefinitionId,
         intrinsic::BuiltinInteger,
         name::Name,
         path::Path,
         path_resolver::Resolver,
         refinement::{Predicate, UnaryOperator},
         term::{
-            BinaryOperator, Body, CompareOperator, Literal, LogicOperator, Pattern, Term, TermId,
+            BinaryOperator, Body, CompareOperator, Literal, LogicOperator, Pattern, Statement,
+            Term, TermId, UnaryOperator as TermUnaryOp,
         },
-        type_reference::{self, TypeReference},
+        type_reference::TypeReference,
     },
     HirDatabase,
 };
@@ -23,6 +23,11 @@ struct RefinedBase {
     pub base: Type,
     pub binder: Name,
     pub predicate: Predicate,
+}
+
+struct DependentFunction {
+    pub arguments: Vec<(Name, RefinedBase)>,
+    pub return_type: RefinedBase,
 }
 
 struct Context {
@@ -305,7 +310,6 @@ fn lower_predicate<'ctx>(
                     },
                     _ => todo!(),
                 },
-                _ => todo!(),
             }
         }
         Predicate::Unary(op, predicate) => {
@@ -392,7 +396,6 @@ impl<'a> Fold<'a> {
             _ => {
                 let (fold, t, c) = self.synth_type(term_id);
                 let (fold, c2) = fold.subtype(t, output_type);
-
                 (
                     fold,
                     match c {
@@ -408,9 +411,51 @@ impl<'a> Fold<'a> {
         let term = &self.body.expressions[term_id];
         match term {
             Term::Block {
-                statements: _,
+                statements,
                 trailing_expression,
-            } => self.synth_type(*trailing_expression),
+            } => {
+                let (fold, constraints) =
+                    statements
+                        .iter()
+                        .fold(
+                            (self, vec![]),
+                            |(fold, mut constraints), statement| match statement {
+                                Statement::Let(pattern, init_term) => {
+                                    let (mut fold, ty, c) = fold.synth_type(*init_term);
+                                    let pattern = &fold.body.patterns[*pattern];
+                                    let (path, name) = match pattern {
+                                        Pattern::Bind(name) => (
+                                            Path {
+                                                segments: vec![name.clone()],
+                                            },
+                                            name.clone(),
+                                        ),
+                                        _ => todo!(),
+                                    };
+                                    fold.context.bindings.push((path, ty.clone()));
+                                    constraints.push((name, ty, c));
+                                    (fold, constraints)
+                                }
+                                Statement::Expression(_) => todo!(),
+                            },
+                        );
+                let (fold, base, c) = fold.synth_type(*trailing_expression);
+                let constraint = constraints.into_iter().rfold(
+                    c,
+                    |inner_constraint, (name, ty, outer_constraint)| {
+                        let implication_constraint =
+                            implication_constraint(name, ty, inner_constraint);
+                        Some(match outer_constraint {
+                            Some(outer_constraint) => Constraint::Conjunction(
+                                Box::new(outer_constraint),
+                                Box::new(implication_constraint),
+                            ),
+                            None => implication_constraint,
+                        })
+                    },
+                );
+                (fold, base, constraint)
+            }
             Term::Path(path) => {
                 let RefinedBase {
                     base,
@@ -436,6 +481,54 @@ impl<'a> Fold<'a> {
             Term::Literal(lit) => match lit {
                 Literal::Integer(value, sufix) => (self, primitive_integer(*value, *sufix), None),
                 Literal::Bool(value) => (self, primitive_bool(*value), None),
+            },
+            Term::Unary(op, term) => match op {
+                TermUnaryOp::Minus => {
+                    // synth operator type
+                    // ty: minus_signature
+                    // c: true
+                    let minus_signature = DependentFunction {
+                        arguments: vec![(
+                            Name::new_inline("arg0"),
+                            RefinedBase {
+                                base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                                binder: Name::new_inline("arg0"),
+                                predicate: Predicate::Boolean(true),
+                            },
+                        )],
+                        return_type: RefinedBase {
+                            base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                            binder: Name::new_inline("ret"),
+                            predicate: Predicate::Binary(
+                                BinaryOperator::Compare(CompareOperator::Equality {
+                                    negated: false,
+                                }),
+                                Box::new(Predicate::Variable(Name::new_inline("ret"))),
+                                Box::new(Predicate::Unary(
+                                    UnaryOperator::Minus,
+                                    Box::new(Predicate::Variable(Name::new_inline("arg0"))),
+                                )),
+                            ),
+                        },
+                    };
+
+                    let (argument_name, argument_type) = minus_signature.arguments[0].clone();
+
+                    let (fold, c) = self.check_type(*term, argument_type.clone());
+
+                    let name = match &fold.body.expressions[*term] {
+                        Term::Path(path) => path.as_name(),
+                        _ => panic!(),
+                    };
+
+                    let return_type = minus_signature.return_type;
+
+                    let return_type = substitution_in_type(return_type, argument_name, name);
+                    (fold, return_type, Some(c))
+                }
+                TermUnaryOp::Negation => todo!(),
+                TermUnaryOp::Reference => todo!(),
+                TermUnaryOp::Dereference => todo!(),
             },
             _ => todo!(),
         }
@@ -469,6 +562,27 @@ impl<'a> Fold<'a> {
         };
 
         (self, constraint)
+    }
+}
+
+fn substitution_in_type(ty: RefinedBase, old_name: Name, new_name: Name) -> RefinedBase {
+    let RefinedBase {
+        base,
+        binder,
+        predicate,
+    } = ty;
+    if old_name == binder {
+        RefinedBase {
+            base,
+            binder,
+            predicate,
+        }
+    } else {
+        RefinedBase {
+            base,
+            binder,
+            predicate: substitution(old_name, new_name, predicate),
+        }
     }
 }
 
@@ -521,4 +635,25 @@ fn substitution(old: Name, new: Name, predicate: Predicate) -> Predicate {
         }
         Predicate::Boolean(_) | Predicate::Integer(_) => predicate,
     }
+}
+
+fn implication_constraint(
+    name: Name,
+    ty: RefinedBase,
+    constraint: Option<Constraint>,
+) -> Constraint {
+    let RefinedBase {
+        base,
+        binder,
+        predicate,
+    } = ty;
+
+    let constraint = Constraint::Implication {
+        binder: name.clone(),
+        base,
+        antecedent: substitution(binder, name, predicate),
+        consequent: Box::new(constraint.unwrap_or(Constraint::Predicate(Predicate::Boolean(true)))),
+    };
+
+    constraint
 }
