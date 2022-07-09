@@ -1,3 +1,4 @@
+use la_arena::Idx;
 use z3::ast::{Ast, Bool, Int};
 
 use crate::{
@@ -10,8 +11,8 @@ use crate::{
         path_resolver::Resolver,
         refinement::{Predicate, UnaryOperator},
         term::{
-            BinaryOperator, Body, CompareOperator, Literal, LogicOperator, Pattern, Statement,
-            Term, TermId, UnaryOperator as TermUnaryOp,
+            ArithmeticOperator, BinaryOperator, Body, CompareOperator, Literal, LogicOperator,
+            Pattern, Statement, Term, TermId, UnaryOperator as TermUnaryOp,
         },
         type_reference::TypeReference,
     },
@@ -26,8 +27,25 @@ struct RefinedBase {
 }
 
 struct DependentFunction {
-    pub arguments: Vec<(Name, RefinedBase)>,
-    pub return_type: RefinedBase,
+    pub argument: (Name, RefinedBase),
+    pub tail_type: Box<RefinedType>,
+}
+
+enum RefinedType {
+    Base(RefinedBase),
+    Fn(DependentFunction),
+}
+
+impl From<RefinedBase> for RefinedType {
+    fn from(base: RefinedBase) -> Self {
+        Self::Base(base)
+    }
+}
+
+impl From<DependentFunction> for RefinedType {
+    fn from(fun: DependentFunction) -> Self {
+        Self::Fn(fun)
+    }
 }
 
 struct Context {
@@ -275,7 +293,18 @@ fn lower_predicate<'ctx>(
             let lhs = lower_predicate(context, variables, *lhs);
             let rhs = lower_predicate(context, variables, *rhs);
             match op {
-                BinaryOperator::Arithmetic(_) => todo!(),
+                BinaryOperator::Arithmetic(arith_op) => match arith_op {
+                    ArithmeticOperator::Add => match (lhs, rhs) {
+                        (Z3Predicate::Int(lhs), Z3Predicate::Int(rhs)) => {
+                            Int::add(context, &[&lhs, &rhs]).into()
+                        }
+                        _ => todo!(),
+                    },
+                    ArithmeticOperator::Sub => todo!(),
+                    ArithmeticOperator::Div => todo!(),
+                    ArithmeticOperator::Mul => todo!(),
+                    ArithmeticOperator::Rem => todo!(),
+                },
                 BinaryOperator::Logic(op) => {
                     let (lhs, rhs) = match (lhs, rhs) {
                         (Z3Predicate::Bool(lhs), Z3Predicate::Bool(rhs)) => (lhs, rhs),
@@ -390,6 +419,36 @@ struct Fold<'a> {
 }
 
 impl<'a> Fold<'a> {
+    fn subtype(self, lesser: RefinedBase, greater: RefinedBase) -> (Self, Constraint) {
+        let RefinedBase {
+            base: lesser_base,
+            binder: lesser_binder,
+            predicate: lesser_predicate,
+        } = lesser;
+        let RefinedBase {
+            base: greater_base,
+            binder: greater_binder,
+            predicate: greater_predicate,
+        } = greater;
+
+        if lesser_base != greater_base {
+            panic!("missmatch base types: {lesser_base:?} <: {greater_base:?}")
+        }
+
+        let constraint = Constraint::Implication {
+            binder: lesser_binder.clone(),
+            base: lesser_base,
+            antecedent: lesser_predicate,
+            consequent: Box::new(Constraint::Predicate(substitution(
+                greater_binder,
+                lesser_binder,
+                greater_predicate,
+            ))),
+        };
+
+        (self, constraint)
+    }
+
     fn check_type(self, term_id: TermId, output_type: RefinedBase) -> (Self, Constraint) {
         let term = &self.body.expressions[term_id];
         match term {
@@ -482,86 +541,161 @@ impl<'a> Fold<'a> {
                 Literal::Integer(value, sufix) => (self, primitive_integer(*value, *sufix), None),
                 Literal::Bool(value) => (self, primitive_bool(*value), None),
             },
-            Term::Unary(op, term) => match op {
-                TermUnaryOp::Minus => {
-                    // synth operator type
-                    // ty: minus_signature
-                    // c: true
-                    let minus_signature = DependentFunction {
-                        arguments: vec![(
+            Term::Unary(op, term) => self.synth_unary_term(op, *term),
+            Term::Binary(op, lhs, rhs) => self.synth_binary_term(op, *lhs, *rhs),
+            _ => todo!(),
+        }
+    }
+
+    pub(crate) fn synth_unary_term(
+        self,
+        op: &'a TermUnaryOp,
+        term: Idx<Term>,
+    ) -> (Fold, RefinedBase, Option<Constraint>) {
+        match op {
+            TermUnaryOp::Minus => {
+                // synth operator type
+                // ty: minus_signature
+                // c: true
+                let minus_signature = DependentFunction {
+                    argument: (
+                        Name::new_inline("arg0"),
+                        RefinedBase {
+                            base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                            binder: Name::new_inline("arg0"),
+                            predicate: Predicate::Boolean(true),
+                        },
+                    ),
+                    tail_type: Box::new(RefinedType::Base(RefinedBase {
+                        base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                        binder: Name::new_inline("ret"),
+                        predicate: Predicate::Binary(
+                            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
+                            Box::new(Predicate::Variable(Name::new_inline("ret"))),
+                            Box::new(Predicate::Unary(
+                                UnaryOperator::Minus,
+                                Box::new(Predicate::Variable(Name::new_inline("arg0"))),
+                            )),
+                        ),
+                    })),
+                };
+
+                let (fold, ty, constraint) =
+                    self.synth_function_call(minus_signature, vec![term], None);
+                (
+                    fold,
+                    match ty {
+                        RefinedType::Base(base) => base,
+                        RefinedType::Fn(_) => todo!(),
+                    },
+                    constraint,
+                )
+            }
+            TermUnaryOp::Negation => todo!(),
+            TermUnaryOp::Reference => todo!(),
+            TermUnaryOp::Dereference => todo!(),
+        }
+    }
+
+    fn synth_binary_term(
+        self,
+        op: &'a BinaryOperator,
+        lhs: Idx<Term>,
+        rhs: Idx<Term>,
+    ) -> (Fold, RefinedBase, Option<Constraint>) {
+        match op {
+            BinaryOperator::Arithmetic(arith_op) => match arith_op {
+                ArithmeticOperator::Add => {
+                    let sum_signature = DependentFunction {
+                        argument: (
                             Name::new_inline("arg0"),
                             RefinedBase {
                                 base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
                                 binder: Name::new_inline("arg0"),
                                 predicate: Predicate::Boolean(true),
                             },
-                        )],
-                        return_type: RefinedBase {
-                            base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                            binder: Name::new_inline("ret"),
-                            predicate: Predicate::Binary(
-                                BinaryOperator::Compare(CompareOperator::Equality {
-                                    negated: false,
-                                }),
-                                Box::new(Predicate::Variable(Name::new_inline("ret"))),
-                                Box::new(Predicate::Unary(
-                                    UnaryOperator::Minus,
-                                    Box::new(Predicate::Variable(Name::new_inline("arg0"))),
-                                )),
+                        ),
+                        tail_type: Box::new(RefinedType::Fn(DependentFunction {
+                            argument: (
+                                Name::new_inline("arg1"),
+                                RefinedBase {
+                                    base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                                    binder: Name::new_inline("arg1"),
+                                    predicate: Predicate::Boolean(true),
+                                },
                             ),
+                            tail_type: Box::new(RefinedType::Base(RefinedBase {
+                                base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                                binder: Name::new_inline("ret"),
+                                predicate: Predicate::Binary(
+                                    BinaryOperator::Compare(CompareOperator::Equality {
+                                        negated: false,
+                                    }),
+                                    Box::new(Predicate::Variable(Name::new_inline("ret"))),
+                                    Box::new(Predicate::Binary(
+                                        BinaryOperator::Arithmetic(ArithmeticOperator::Add),
+                                        Box::new(Predicate::Variable(Name::new_inline("arg0"))),
+                                        Box::new(Predicate::Variable(Name::new_inline("arg1"))),
+                                    )),
+                                ),
+                            })),
+                        })),
+                    };
+
+                    let (fold, ty, constraint) =
+                        self.synth_function_call(sum_signature, vec![lhs, rhs], None);
+                    (
+                        fold,
+                        match ty {
+                            RefinedType::Base(base) => base,
+                            RefinedType::Fn(_) => todo!(),
                         },
-                    };
-
-                    let (argument_name, argument_type) = minus_signature.arguments[0].clone();
-
-                    let (fold, c) = self.check_type(*term, argument_type.clone());
-
-                    let name = match &fold.body.expressions[*term] {
-                        Term::Path(path) => path.as_name(),
-                        _ => panic!(),
-                    };
-
-                    let return_type = minus_signature.return_type;
-
-                    let return_type = substitution_in_type(return_type, argument_name, name);
-                    (fold, return_type, Some(c))
+                        constraint,
+                    )
                 }
-                TermUnaryOp::Negation => todo!(),
-                TermUnaryOp::Reference => todo!(),
-                TermUnaryOp::Dereference => todo!(),
+                ArithmeticOperator::Sub => todo!(),
+                ArithmeticOperator::Div => todo!(),
+                ArithmeticOperator::Mul => todo!(),
+                ArithmeticOperator::Rem => todo!(),
             },
-            _ => todo!(),
+            BinaryOperator::Logic(_) => todo!(),
+            BinaryOperator::Compare(_) => todo!(),
         }
     }
 
-    fn subtype(self, lesser: RefinedBase, greater: RefinedBase) -> (Self, Constraint) {
-        let RefinedBase {
-            base: lesser_base,
-            binder: lesser_binder,
-            predicate: lesser_predicate,
-        } = lesser;
-        let RefinedBase {
-            base: greater_base,
-            binder: greater_binder,
-            predicate: greater_predicate,
-        } = greater;
+    fn synth_function_call(
+        self,
+        function_ty: DependentFunction,
+        mut argument_terms: Vec<TermId>,
+        constraint: Option<Constraint>,
+    ) -> (Self, RefinedType, Option<Constraint>) {
+        if argument_terms.is_empty() {
+            (self, function_ty.into(), constraint)
+        } else {
+            let argument = argument_terms.remove(0);
+            // synth
+            let (fold, ty, constraint) =
+                self.synth_function_call(function_ty, argument_terms, constraint);
 
-        if lesser_base != greater_base {
-            panic!("missmatch base types: {lesser_base:?} <: {greater_base:?}")
+            let function_ty = match ty {
+                RefinedType::Fn(dep_fn) => dep_fn,
+                RefinedType::Base(base) => panic!(),
+            };
+            let (argument_name, argument_type) = function_ty.argument;
+
+            // check
+            let (fold, c) = fold.check_type(argument, argument_type.clone());
+
+            let name = match &fold.body.expressions[argument] {
+                Term::Path(path) => path.as_name(),
+                _ => panic!(),
+            };
+
+            // substitue
+            let return_type =
+                substitution_in_refined_type(*function_ty.tail_type, argument_name, name);
+            (fold, return_type.into(), Some(c))
         }
-
-        let constraint = Constraint::Implication {
-            binder: lesser_binder.clone(),
-            base: lesser_base,
-            antecedent: lesser_predicate,
-            consequent: Box::new(Constraint::Predicate(substitution(
-                greater_binder,
-                lesser_binder,
-                greater_predicate,
-            ))),
-        };
-
-        (self, constraint)
     }
 }
 
@@ -583,6 +717,38 @@ fn substitution_in_type(ty: RefinedBase, old_name: Name, new_name: Name) -> Refi
             binder,
             predicate: substitution(old_name, new_name, predicate),
         }
+    }
+}
+
+fn substitution_in_function_type(
+    function_ty: DependentFunction,
+    old_name: Name,
+    new_name: Name,
+) -> RefinedBase {
+    // let DependentFunction {
+    //     arguments,
+    //     return_type,
+    // } = function_ty;
+    // if old_name == binder {
+    //     RefinedBase {
+    //         base,
+    //         binder,
+    //         predicate,
+    //     }
+    // } else {
+    //     RefinedBase {
+    //         base,
+    //         binder,
+    //         predicate: substitution(old_name, new_name, predicate),
+    //     }
+    // }
+    todo!()
+}
+
+fn substitution_in_refined_type(ty: RefinedType, old_name: Name, new_name: Name) -> RefinedType {
+    match ty {
+        RefinedType::Base(base) => substitution_in_type(base, old_name, new_name).into(),
+        RefinedType::Fn(func) => substitution_in_function_type(func, old_name, new_name).into(),
     }
 }
 

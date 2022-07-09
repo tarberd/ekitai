@@ -199,3 +199,19 @@ fn test_function_minus_call_literal() {
         assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
     }
 }
+
+#[test]
+fn test_function_sum_call_argument() {
+    let source = "fn id(x: {x:i64| true}, y: {y:i64| true}) -> {z:i64| z == x + y} { x + y }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
