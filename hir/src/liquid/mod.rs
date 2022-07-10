@@ -36,6 +36,22 @@ enum RefinedType {
     Fn(DependentFunction),
 }
 
+impl RefinedType {
+    fn as_refined_base(self) -> RefinedBase {
+        match self {
+            RefinedType::Base(base) => base,
+            _ => panic!("Not a RefinedBase."),
+        }
+    }
+
+    fn as_dependent_function(self) -> DependentFunction {
+        match self {
+            RefinedType::Fn(func) => func,
+            _ => panic!("Not a DependentFunction."),
+        }
+    }
+}
+
 impl From<RefinedBase> for RefinedType {
     fn from(base: RefinedBase) -> Self {
         Self::Base(base)
@@ -82,6 +98,15 @@ enum Constraint {
         consequent: Box<Self>,
     },
     Conjunction(Box<Self>, Box<Self>),
+}
+
+impl Constraint {
+    fn make_conjunction(left: Option<Self>, right: Self) -> Self {
+        match left {
+            Some(left) => Self::Conjunction(left.into(), right.into()),
+            None => right,
+        }
+    }
 }
 
 fn something(
@@ -158,7 +183,7 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
                 binder: name,
                 base,
                 antecedent: predicate,
-                consequent: Box::new(c),
+                consequent: c.into(),
             }
         });
 
@@ -184,7 +209,7 @@ fn entailment(context: Context, constraint: Constraint) -> bool {
                     binder: context_binder,
                     base,
                     antecedent: predicate,
-                    consequent: Box::new(constraint),
+                    consequent: constraint.into(),
                 },
             )
         }
@@ -394,8 +419,8 @@ fn flatten_fold(
                     };
                     let antecedent = Predicate::Binary(
                         BinaryOperator::Logic(LogicOperator::And),
-                        Box::new(sub_antecedent),
-                        Box::new(antecedent.clone()),
+                        sub_antecedent.into(),
+                        antecedent.clone().into(),
                     );
                     FlatImplicationConstraint {
                         binders,
@@ -439,11 +464,12 @@ impl<'a> Fold<'a> {
             binder: lesser_binder.clone(),
             base: lesser_base,
             antecedent: lesser_predicate,
-            consequent: Box::new(Constraint::Predicate(substitution(
+            consequent: Constraint::Predicate(substitution(
                 greater_binder,
                 lesser_binder,
                 greater_predicate,
-            ))),
+            ))
+            .into(),
         };
 
         (self, constraint)
@@ -455,13 +481,7 @@ impl<'a> Fold<'a> {
             _ => {
                 let (fold, t, c) = self.synth_type(term_id);
                 let (fold, c2) = fold.subtype(t, output_type);
-                (
-                    fold,
-                    match c {
-                        Some(c) => Constraint::Conjunction(Box::new(c), Box::new(c2)),
-                        None => c2,
-                    },
-                )
+                (fold, Constraint::make_conjunction(c, c2))
             }
         }
     }
@@ -504,13 +524,10 @@ impl<'a> Fold<'a> {
                     |inner_constraint, (name, ty, outer_constraint)| {
                         let implication_constraint =
                             implication_constraint(name, ty, inner_constraint);
-                        Some(match outer_constraint {
-                            Some(outer_constraint) => Constraint::Conjunction(
-                                Box::new(outer_constraint),
-                                Box::new(implication_constraint),
-                            ),
-                            None => implication_constraint,
-                        })
+                        Some(Constraint::make_conjunction(
+                            outer_constraint,
+                            implication_constraint,
+                        ))
                     },
                 );
                 (fold, base, constraint)
@@ -527,12 +544,13 @@ impl<'a> Fold<'a> {
                     binder: binder.clone(),
                     predicate: Predicate::Binary(
                         BinaryOperator::Logic(LogicOperator::And),
-                        Box::new(predicate),
-                        Box::new(Predicate::Binary(
+                        predicate.into(),
+                        Predicate::Binary(
                             BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
-                            Box::new(Predicate::Variable(binder)),
-                            Box::new(Predicate::Variable(path.as_name())),
-                        )),
+                            Predicate::Variable(binder).into(),
+                            Predicate::Variable(path.as_name()).into(),
+                        )
+                        .into(),
                     ),
                 };
                 (self, path_type, None)
@@ -559,37 +577,32 @@ impl<'a> Fold<'a> {
                 // c: true
                 let minus_signature = DependentFunction {
                     argument: (
-                        Name::new_inline("arg0"),
+                        Name::new_inline("param0"),
                         RefinedBase {
                             base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                            binder: Name::new_inline("arg0"),
+                            binder: Name::new_inline("param0"),
                             predicate: Predicate::Boolean(true),
                         },
                     ),
-                    tail_type: Box::new(RefinedType::Base(RefinedBase {
+                    tail_type: RefinedType::Base(RefinedBase {
                         base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
                         binder: Name::new_inline("ret"),
                         predicate: Predicate::Binary(
                             BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
-                            Box::new(Predicate::Variable(Name::new_inline("ret"))),
-                            Box::new(Predicate::Unary(
+                            Predicate::Variable(Name::new_inline("ret")).into(),
+                            Predicate::Unary(
                                 UnaryOperator::Minus,
-                                Box::new(Predicate::Variable(Name::new_inline("arg0"))),
-                            )),
+                                Predicate::Variable(Name::new_inline("param0")).into(),
+                            )
+                            .into(),
                         ),
-                    })),
+                    })
+                    .into(),
                 };
 
                 let (fold, ty, constraint) =
                     self.synth_function_call(minus_signature, vec![term], None);
-                (
-                    fold,
-                    match ty {
-                        RefinedType::Base(base) => base,
-                        RefinedType::Fn(_) => todo!(),
-                    },
-                    constraint,
-                )
+                (fold, ty.as_refined_base(), constraint)
             }
             TermUnaryOp::Negation => todo!(),
             TermUnaryOp::Reference => todo!(),
@@ -608,50 +621,46 @@ impl<'a> Fold<'a> {
                 ArithmeticOperator::Add => {
                     let sum_signature = DependentFunction {
                         argument: (
-                            Name::new_inline("arg0"),
+                            Name::new_inline("param0"),
                             RefinedBase {
                                 base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                                binder: Name::new_inline("arg0"),
+                                binder: Name::new_inline("param0"),
                                 predicate: Predicate::Boolean(true),
                             },
                         ),
-                        tail_type: Box::new(RefinedType::Fn(DependentFunction {
+                        tail_type: RefinedType::Fn(DependentFunction {
                             argument: (
-                                Name::new_inline("arg1"),
+                                Name::new_inline("param1"),
                                 RefinedBase {
                                     base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                                    binder: Name::new_inline("arg1"),
+                                    binder: Name::new_inline("param1"),
                                     predicate: Predicate::Boolean(true),
                                 },
                             ),
-                            tail_type: Box::new(RefinedType::Base(RefinedBase {
+                            tail_type: RefinedType::Base(RefinedBase {
                                 base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
                                 binder: Name::new_inline("ret"),
                                 predicate: Predicate::Binary(
                                     BinaryOperator::Compare(CompareOperator::Equality {
                                         negated: false,
                                     }),
-                                    Box::new(Predicate::Variable(Name::new_inline("ret"))),
-                                    Box::new(Predicate::Binary(
+                                    Predicate::Variable(Name::new_inline("ret")).into(),
+                                    Predicate::Binary(
                                         BinaryOperator::Arithmetic(ArithmeticOperator::Add),
-                                        Box::new(Predicate::Variable(Name::new_inline("arg0"))),
-                                        Box::new(Predicate::Variable(Name::new_inline("arg1"))),
-                                    )),
+                                        Predicate::Variable(Name::new_inline("param0")).into(),
+                                        Predicate::Variable(Name::new_inline("param1")).into(),
+                                    )
+                                    .into(),
                                 ),
-                            })),
-                        })),
+                            })
+                            .into(),
+                        })
+                        .into(),
                     };
 
                     let (fold, ty, constraint) =
                         self.synth_function_call(sum_signature, vec![lhs, rhs], None);
-                    (
-                        fold,
-                        match ty {
-                            RefinedType::Base(base) => base,
-                            RefinedType::Fn(_) => todo!(),
-                        },
-                        constraint,
-                    )
+                    (fold, ty.as_refined_base(), constraint)
                 }
                 ArithmeticOperator::Sub => todo!(),
                 ArithmeticOperator::Div => todo!(),
@@ -677,10 +686,7 @@ impl<'a> Fold<'a> {
             let (fold, ty, constraint) =
                 self.synth_function_call(function_ty, argument_terms, constraint);
 
-            let function_ty = match ty {
-                RefinedType::Fn(dep_fn) => dep_fn,
-                RefinedType::Base(base) => panic!(),
-            };
+            let function_ty = ty.as_dependent_function();
             let (argument_name, argument_type) = function_ty.argument;
 
             // check
@@ -694,12 +700,16 @@ impl<'a> Fold<'a> {
             // substitue
             let return_type =
                 substitution_in_refined_type(*function_ty.tail_type, argument_name, name);
-            (fold, return_type.into(), Some(c))
+            (
+                fold,
+                return_type.into(),
+                Some(Constraint::make_conjunction(constraint, c)),
+            )
         }
     }
 }
 
-fn substitution_in_type(ty: RefinedBase, old_name: Name, new_name: Name) -> RefinedBase {
+fn substitution_in_refined_base(ty: RefinedBase, old_name: Name, new_name: Name) -> RefinedBase {
     let RefinedBase {
         base,
         binder,
@@ -724,30 +734,33 @@ fn substitution_in_function_type(
     function_ty: DependentFunction,
     old_name: Name,
     new_name: Name,
-) -> RefinedBase {
-    // let DependentFunction {
-    //     arguments,
-    //     return_type,
-    // } = function_ty;
-    // if old_name == binder {
-    //     RefinedBase {
-    //         base,
-    //         binder,
-    //         predicate,
-    //     }
-    // } else {
-    //     RefinedBase {
-    //         base,
-    //         binder,
-    //         predicate: substitution(old_name, new_name, predicate),
-    //     }
-    // }
-    todo!()
+) -> DependentFunction {
+    let DependentFunction {
+        argument: (arg_name, arg_type),
+        tail_type,
+    } = function_ty;
+    if old_name == arg_name {
+        DependentFunction {
+            argument: (
+                arg_name,
+                substitution_in_refined_base(arg_type, old_name, new_name),
+            ),
+            tail_type,
+        }
+    } else {
+        DependentFunction {
+            argument: (
+                arg_name,
+                substitution_in_refined_base(arg_type, old_name.clone(), new_name.clone()),
+            ),
+            tail_type: substitution_in_refined_type(*tail_type, old_name, new_name).into(),
+        }
+    }
 }
 
 fn substitution_in_refined_type(ty: RefinedType, old_name: Name, new_name: Name) -> RefinedType {
     match ty {
-        RefinedType::Base(base) => substitution_in_type(base, old_name, new_name).into(),
+        RefinedType::Base(base) => substitution_in_refined_base(base, old_name, new_name).into(),
         RefinedType::Fn(func) => substitution_in_function_type(func, old_name, new_name).into(),
     }
 }
@@ -759,10 +772,7 @@ fn primitive_bool(value: bool) -> RefinedBase {
         binder: binder.clone(),
         predicate: match value {
             true => Predicate::Variable(binder),
-            false => Predicate::Unary(
-                UnaryOperator::Negation,
-                Box::new(Predicate::Variable(binder)),
-            ),
+            false => Predicate::Unary(UnaryOperator::Negation, Predicate::Variable(binder).into()),
         },
     }
 }
@@ -776,8 +786,8 @@ fn primitive_integer(value: u128, sufix: Option<BuiltinInteger>) -> RefinedBase 
         binder: binder.clone(),
         predicate: Predicate::Binary(
             BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
-            Box::new(Predicate::Variable(binder)),
-            Box::new(Predicate::Integer(value)),
+            Predicate::Variable(binder).into(),
+            Predicate::Integer(value).into(),
         ),
     }
 }
@@ -793,11 +803,11 @@ fn substitution(old: Name, new: Name, predicate: Predicate) -> Predicate {
         }
         Predicate::Binary(op, lhs, rhs) => Predicate::Binary(
             op,
-            Box::new(substitution(old.clone(), new.clone(), *lhs)),
-            Box::new(substitution(old, new, *rhs)),
+            substitution(old.clone(), new.clone(), *lhs).into(),
+            substitution(old, new, *rhs).into(),
         ),
         Predicate::Unary(op, predicate) => {
-            Predicate::Unary(op, Box::new(substitution(old, new, *predicate)))
+            Predicate::Unary(op, substitution(old, new, *predicate).into())
         }
         Predicate::Boolean(_) | Predicate::Integer(_) => predicate,
     }
@@ -818,7 +828,9 @@ fn implication_constraint(
         binder: name.clone(),
         base,
         antecedent: substitution(binder, name, predicate),
-        consequent: Box::new(constraint.unwrap_or(Constraint::Predicate(Predicate::Boolean(true)))),
+        consequent: constraint
+            .unwrap_or(Constraint::Predicate(Predicate::Boolean(true)))
+            .into(),
     };
 
     constraint

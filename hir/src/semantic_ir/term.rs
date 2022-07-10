@@ -259,6 +259,13 @@ impl BodyFold {
         let (mut fold, rhs) =
             fold.fold_expression(infix.rhs().expect("missing rhs from infix expression"));
 
+        let (lhs_pattern_id, lhs_path) = fold.make_argument_pattern();
+        let (rhs_pattern_id, rhs_path) = fold.make_argument_pattern();
+        let statements = vec![
+            Statement::Let(lhs_pattern_id, lhs),
+            Statement::Let(rhs_pattern_id, rhs),
+        ];
+
         let op = match infix
             .operator()
             .expect("missing operator from infix expression")
@@ -296,9 +303,20 @@ impl BodyFold {
             ast::BinaryOperator::DoublePipe(_) => BinaryOperator::Logic(LogicOperator::Or),
         };
 
+        let lhs = Term::Path(lhs_path);
+        let lhs = fold.expressions.alloc(lhs);
+        let rhs = Term::Path(rhs_path);
+        let rhs = fold.expressions.alloc(rhs);
+
         let bin_expr = Term::Binary(op, lhs, rhs);
-        let id = fold.expressions.alloc(bin_expr);
-        (fold, id)
+        let bin_expr = fold.expressions.alloc(bin_expr);
+
+        let bin_expr_block = Term::Block {
+            statements,
+            trailing_expression: bin_expr,
+        };
+        let bin_expr_block = fold.expressions.alloc(bin_expr_block);
+        (fold, bin_expr_block)
     }
 
     fn fold_prefix_expression(self, prefix: ast::PrefixExpression) -> (Self, TermId) {
