@@ -1,3 +1,5 @@
+use core::panic;
+
 use la_arena::Idx;
 use z3::ast::{Ast, Bool, Int};
 
@@ -318,18 +320,20 @@ fn lower_predicate<'ctx>(
             let lhs = lower_predicate(context, variables, *lhs);
             let rhs = lower_predicate(context, variables, *rhs);
             match op {
-                BinaryOperator::Arithmetic(arith_op) => match arith_op {
-                    ArithmeticOperator::Add => match (lhs, rhs) {
-                        (Z3Predicate::Int(lhs), Z3Predicate::Int(rhs)) => {
-                            Int::add(context, &[&lhs, &rhs]).into()
-                        }
-                        _ => todo!(),
-                    },
-                    ArithmeticOperator::Sub => todo!(),
-                    ArithmeticOperator::Div => todo!(),
-                    ArithmeticOperator::Mul => todo!(),
-                    ArithmeticOperator::Rem => todo!(),
-                },
+                BinaryOperator::Arithmetic(arith_op) => {
+                    let (lhs, rhs) = match (lhs, rhs) {
+                        (Z3Predicate::Int(lhs), Z3Predicate::Int(rhs)) => (lhs, rhs),
+                        _ => panic!(),
+                    };
+                    match arith_op {
+                        ArithmeticOperator::Add => Int::add(context, &[&lhs, &rhs]),
+                        ArithmeticOperator::Sub => Int::sub(context, &[&lhs, &rhs]),
+                        ArithmeticOperator::Div => lhs.div(&rhs),
+                        ArithmeticOperator::Mul => Int::mul(context, &[&lhs, &rhs]),
+                        ArithmeticOperator::Rem => lhs.rem(&rhs),
+                    }
+                    .into()
+                }
                 BinaryOperator::Logic(op) => {
                     let (lhs, rhs) = match (lhs, rhs) {
                         (Z3Predicate::Bool(lhs), Z3Predicate::Bool(rhs)) => (lhs, rhs),
@@ -617,56 +621,50 @@ impl<'a> Fold<'a> {
         rhs: Idx<Term>,
     ) -> (Fold, RefinedBase, Option<Constraint>) {
         match op {
-            BinaryOperator::Arithmetic(arith_op) => match arith_op {
-                ArithmeticOperator::Add => {
-                    let sum_signature = DependentFunction {
+            BinaryOperator::Arithmetic(arith_op) => {
+                let sum_signature = DependentFunction {
+                    argument: (
+                        Name::new_inline("param0"),
+                        RefinedBase {
+                            base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                            binder: Name::new_inline("param0"),
+                            predicate: Predicate::Boolean(true),
+                        },
+                    ),
+                    tail_type: RefinedType::Fn(DependentFunction {
                         argument: (
-                            Name::new_inline("param0"),
+                            Name::new_inline("param1"),
                             RefinedBase {
                                 base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                                binder: Name::new_inline("param0"),
+                                binder: Name::new_inline("param1"),
                                 predicate: Predicate::Boolean(true),
                             },
                         ),
-                        tail_type: RefinedType::Fn(DependentFunction {
-                            argument: (
-                                Name::new_inline("param1"),
-                                RefinedBase {
-                                    base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                                    binder: Name::new_inline("param1"),
-                                    predicate: Predicate::Boolean(true),
-                                },
+                        tail_type: RefinedType::Base(RefinedBase {
+                            base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                            binder: Name::new_inline("ret"),
+                            predicate: Predicate::Binary(
+                                BinaryOperator::Compare(CompareOperator::Equality {
+                                    negated: false,
+                                }),
+                                Predicate::Variable(Name::new_inline("ret")).into(),
+                                Predicate::Binary(
+                                    BinaryOperator::Arithmetic(*arith_op),
+                                    Predicate::Variable(Name::new_inline("param0")).into(),
+                                    Predicate::Variable(Name::new_inline("param1")).into(),
+                                )
+                                .into(),
                             ),
-                            tail_type: RefinedType::Base(RefinedBase {
-                                base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
-                                binder: Name::new_inline("ret"),
-                                predicate: Predicate::Binary(
-                                    BinaryOperator::Compare(CompareOperator::Equality {
-                                        negated: false,
-                                    }),
-                                    Predicate::Variable(Name::new_inline("ret")).into(),
-                                    Predicate::Binary(
-                                        BinaryOperator::Arithmetic(ArithmeticOperator::Add),
-                                        Predicate::Variable(Name::new_inline("param0")).into(),
-                                        Predicate::Variable(Name::new_inline("param1")).into(),
-                                    )
-                                    .into(),
-                                ),
-                            })
-                            .into(),
                         })
                         .into(),
-                    };
+                    })
+                    .into(),
+                };
 
-                    let (fold, ty, constraint) =
-                        self.synth_function_call(sum_signature, vec![lhs, rhs], None);
-                    (fold, ty.as_refined_base(), constraint)
-                }
-                ArithmeticOperator::Sub => todo!(),
-                ArithmeticOperator::Div => todo!(),
-                ArithmeticOperator::Mul => todo!(),
-                ArithmeticOperator::Rem => todo!(),
-            },
+                let (fold, ty, constraint) =
+                    self.synth_function_call(sum_signature, vec![lhs, rhs], None);
+                (fold, ty.as_refined_base(), constraint)
+            }
             BinaryOperator::Logic(_) => todo!(),
             BinaryOperator::Compare(_) => todo!(),
         }

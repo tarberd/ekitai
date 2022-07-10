@@ -263,3 +263,35 @@ fn test_function_sum_call_argument_literal() {
         assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
     }
 }
+
+#[test]
+fn test_function_arith_operations() {
+    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| true}) -> {z:i64| z == x * 10 + y * 35} { x * 10 + y * 35 }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
+
+#[test]
+fn test_function_arith_operations_err() {
+    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| true}) -> {z:i64| z == x * 10 + y * 35 + 1} { x * 10 + y * 35 }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(false, hir::liquid::check_abstraction(&db, *fid));
+    }
+}

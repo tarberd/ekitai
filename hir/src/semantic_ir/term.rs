@@ -95,14 +95,14 @@ pub enum Literal {
     Bool(bool),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOperator {
     Arithmetic(ArithmeticOperator),
     Logic(LogicOperator),
     Compare(CompareOperator),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArithmeticOperator {
     Add,
     Sub,
@@ -111,19 +111,19 @@ pub enum ArithmeticOperator {
     Rem,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogicOperator {
     And,
     Or,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompareOperator {
     Equality { negated: bool },
     Order { ordering: Ordering, strict: bool },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ordering {
     Less,
     Greater,
