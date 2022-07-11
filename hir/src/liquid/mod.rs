@@ -1,4 +1,5 @@
 use core::panic;
+use std::vec;
 
 use la_arena::Idx;
 use z3::ast::{Ast, Bool, Int};
@@ -14,7 +15,7 @@ use crate::{
         refinement::{Predicate, UnaryOperator},
         term::{
             ArithmeticOperator, BinaryOperator, Body, CompareOperator, Literal, LogicOperator,
-            Pattern, Statement, Term, TermId, UnaryOperator as TermUnaryOp,
+            Pattern, PatternId, Statement, Term, TermId, UnaryOperator as TermUnaryOp,
         },
         type_reference::TypeReference,
     },
@@ -142,52 +143,47 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
         .iter()
         .map(|reference| something(db, &resolver, reference));
 
-    let context = body
+    let function_type = body
         .parameters
         .iter()
         .map(|id| {
             let pat = &body.patterns[*id];
             match pat {
                 Pattern::Deconstructor(_, _) => panic!("no deconstructor on parameter"),
-                Pattern::Bind(name) => Path {
-                    segments: vec![name.clone()],
-                },
+                Pattern::Bind(name) => name,
             }
         })
+        .cloned()
         .zip(param_types.clone())
-        .collect();
+        .rfold(
+            RefinedType::Base(output_type),
+            |tail_type, (param_name, param_type)| {
+                DependentFunction {
+                    argument: (param_name, param_type),
+                    tail_type: tail_type.into(),
+                }
+                .into()
+            },
+        );
 
-    let (Fold { context, .. }, constraint) = Fold {
-        body: &body,
-        context,
-    }
-    .check_type(body.root_expression, output_type);
-
-    let constraint = body
-        .parameters
-        .iter()
-        .map(|id| {
-            let pat = &body.patterns[*id];
-            match pat {
-                Pattern::Deconstructor(_, _) => panic!("no deconstructor on parameter"),
-                Pattern::Bind(name) => name.clone(),
+    let (context, constraint) = match function_type {
+        RefinedType::Base(base) => {
+            let (Fold { context, .. }, constraint) = Fold {
+                body: &body,
+                context: [].into_iter().collect(),
             }
-        })
-        .zip(param_types)
-        .fold(constraint, |c, (name, ty)| {
-            let RefinedBase {
-                base,
-                binder,
-                predicate,
-            } = ty;
-            let predicate = substitution(binder, name.clone(), predicate);
-            Constraint::Implication {
-                binder: name,
-                base,
-                antecedent: predicate,
-                consequent: c.into(),
+            .check_type(body.root_expression, base);
+            (context, constraint)
+        }
+        RefinedType::Fn(depfn) => {
+            let (Fold { context, .. }, constraint) = Fold {
+                body: &body,
+                context: [].into_iter().collect(),
             }
-        });
+            .check_abstraction_type(depfn, body.root_expression);
+            (context, constraint)
+        }
+    };
 
     entailment(context, constraint)
 }
@@ -479,12 +475,36 @@ impl<'a> Fold<'a> {
         (self, constraint)
     }
 
-    fn check_type(self, term_id: TermId, output_type: RefinedBase) -> (Self, Constraint) {
+    fn check_abstraction_type(
+        mut self,
+        constraint_type: DependentFunction,
+        body_term: TermId,
+    ) -> (Self, Constraint) {
+        let DependentFunction {
+            argument: (arg_name, arg_ty),
+            tail_type,
+        } = constraint_type;
+        //add to context
+        let arg_path = Path {
+            segments: vec![arg_name.clone()],
+        };
+        self.context.bindings.push((arg_path, arg_ty.clone()));
+        //check
+        let (fold, constraint) = match *tail_type {
+            RefinedType::Base(base) => self.check_type(body_term, base),
+            RefinedType::Fn(depfn) => self.check_abstraction_type(depfn, body_term),
+        };
+        //implication constraint
+        let constraint = implication_constraint(arg_name, arg_ty, Some(constraint));
+        (fold, constraint)
+    }
+
+    fn check_type(self, term_id: TermId, constraint_type: RefinedBase) -> (Self, Constraint) {
         let term = &self.body.expressions[term_id];
         match term {
             _ => {
                 let (fold, t, c) = self.synth_type(term_id);
-                let (fold, c2) = fold.subtype(t, output_type);
+                let (fold, c2) = fold.subtype(t, constraint_type);
                 (fold, Constraint::make_conjunction(c, c2))
             }
         }
@@ -542,6 +562,8 @@ impl<'a> Fold<'a> {
                     binder,
                     predicate,
                 } = self.context.get(path).unwrap().clone();
+
+                assert!(binder != path.as_name());
 
                 let path_type = RefinedBase {
                     base,
@@ -713,7 +735,18 @@ fn substitution_in_refined_base(ty: RefinedBase, old_name: Name, new_name: Name)
         binder,
         predicate,
     } = ty;
-    if old_name == binder {
+    if new_name == binder {
+        let new_binder = Name::new_inline(format!("{}{}", binder.id.as_str(), 1).as_str());
+        substitution_in_refined_base(
+            RefinedBase {
+                base,
+                binder: new_binder.clone(),
+                predicate: substitution(binder, new_binder, predicate),
+            },
+            old_name,
+            new_name,
+        )
+    } else if old_name == binder {
         RefinedBase {
             base,
             binder,
@@ -737,7 +770,20 @@ fn substitution_in_function_type(
         argument: (arg_name, arg_type),
         tail_type,
     } = function_ty;
-    if old_name == arg_name {
+    if new_name == arg_name {
+        let new_arg_name = Name::new_inline(format!("{}{}", arg_name.id.as_str(), 1).as_str());
+        substitution_in_function_type(
+            DependentFunction {
+                argument: (
+                    new_arg_name.clone(),
+                    substitution_in_refined_base(arg_type, arg_name, new_arg_name),
+                ),
+                tail_type,
+            },
+            old_name,
+            new_name,
+        )
+    } else if old_name == arg_name {
         DependentFunction {
             argument: (
                 arg_name,
