@@ -5,7 +5,10 @@ use la_arena::Idx;
 use z3::ast::{Ast, Bool, Int};
 
 use crate::{
-    check::{type_inference::TypeReferenceResolver, IntegerKind, ScalarType, Type},
+    check::{
+        type_inference::{InferenceResult, TypeReferenceResolver},
+        IntegerKind, ScalarType, Type,
+    },
     semantic_ir::{
         definition_map::FunctionDefinitionId,
         intrinsic::BuiltinInteger,
@@ -15,7 +18,7 @@ use crate::{
         refinement::{Predicate, UnaryOperator},
         term::{
             ArithmeticOperator, BinaryOperator, Body, CompareOperator, Literal, LogicOperator,
-            Pattern, PatternId, Statement, Term, TermId, UnaryOperator as TermUnaryOp,
+            Pattern, Statement, Term, TermId, UnaryOperator as TermUnaryOp,
         },
         type_reference::TypeReference,
     },
@@ -171,6 +174,7 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
             let (Fold { context, .. }, constraint) = Fold {
                 body: &body,
                 context: [].into_iter().collect(),
+                inference: db.infer_body_expression_types(function_id),
             }
             .check_type(body.root_expression, base);
             (context, constraint)
@@ -179,6 +183,7 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
             let (Fold { context, .. }, constraint) = Fold {
                 body: &body,
                 context: [].into_iter().collect(),
+                inference: db.infer_body_expression_types(function_id),
             }
             .check_abstraction_type(depfn, body.root_expression);
             (context, constraint)
@@ -341,9 +346,15 @@ fn lower_predicate<'ctx>(
                     }
                 }
                 BinaryOperator::Compare(compare) => match compare {
-                    CompareOperator::Equality { negated: false } => match (lhs, rhs) {
-                        (Z3Predicate::Bool(lhs), Z3Predicate::Bool(rhs)) => lhs._eq(&rhs).into(),
-                        (Z3Predicate::Int(lhs), Z3Predicate::Int(rhs)) => lhs._eq(&rhs).into(),
+                    CompareOperator::Equality { negated } => match (lhs, rhs) {
+                        (Z3Predicate::Bool(lhs), Z3Predicate::Bool(rhs)) => match negated {
+                            false => lhs._eq(&rhs).into(),
+                            true => Bool::distinct(context, &[&lhs, &rhs]).into(),
+                        },
+                        (Z3Predicate::Int(lhs), Z3Predicate::Int(rhs)) => match negated {
+                            false => lhs._eq(&rhs).into(),
+                            true => Int::distinct(context, &[&lhs, &rhs]).into(),
+                        },
                         _ => panic!("mismatch types in z3"),
                     },
                     CompareOperator::Order { ordering, strict } => match ordering {
@@ -441,6 +452,7 @@ fn flatten_fold(
 struct Fold<'a> {
     body: &'a Body,
     context: Context,
+    inference: InferenceResult,
 }
 
 impl<'a> Fold<'a> {
@@ -642,13 +654,15 @@ impl<'a> Fold<'a> {
         lhs: Idx<Term>,
         rhs: Idx<Term>,
     ) -> (Fold, RefinedBase, Option<Constraint>) {
+        let lhs_ty = self.inference.type_of_expression[lhs].clone();
+        let rhs_ty = self.inference.type_of_expression[rhs].clone();
         match op {
             BinaryOperator::Arithmetic(arith_op) => {
                 let sum_signature = DependentFunction {
                     argument: (
                         Name::new_inline("param0"),
                         RefinedBase {
-                            base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                            base: lhs_ty.clone(),
                             binder: Name::new_inline("param0"),
                             predicate: Predicate::Boolean(true),
                         },
@@ -657,13 +671,13 @@ impl<'a> Fold<'a> {
                         argument: (
                             Name::new_inline("param1"),
                             RefinedBase {
-                                base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                                base: rhs_ty,
                                 binder: Name::new_inline("param1"),
                                 predicate: Predicate::Boolean(true),
                             },
                         ),
                         tail_type: RefinedType::Base(RefinedBase {
-                            base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
+                            base: lhs_ty,
                             binder: Name::new_inline("ret"),
                             predicate: Predicate::Binary(
                                 BinaryOperator::Compare(CompareOperator::Equality {
@@ -687,8 +701,42 @@ impl<'a> Fold<'a> {
                     self.synth_function_call(sum_signature, vec![lhs, rhs], None);
                 (fold, ty.as_refined_base(), constraint)
             }
-            BinaryOperator::Logic(_) => todo!(),
-            BinaryOperator::Compare(_) => todo!(),
+            op @ BinaryOperator::Logic(_) | op @ BinaryOperator::Compare(_) => {
+                let compare_signature = DependentFunction {
+                    argument: (
+                        Name::new_inline("param0"),
+                        RefinedBase {
+                            base: lhs_ty,
+                            binder: Name::new_inline("param0"),
+                            predicate: Predicate::Boolean(true),
+                        },
+                    ),
+                    tail_type: RefinedType::Fn(DependentFunction {
+                        argument: (
+                            Name::new_inline("param1"),
+                            RefinedBase {
+                                base: rhs_ty,
+                                binder: Name::new_inline("param1"),
+                                predicate: Predicate::Boolean(true),
+                            },
+                        ),
+                        tail_type: RefinedType::Base(RefinedBase {
+                            base: Type::Scalar(ScalarType::Boolean),
+                            binder: Name::new_inline("ret"),
+                            predicate: Predicate::Binary(
+                                *op,
+                                Predicate::Variable(Name::new_inline("param0")).into(),
+                                Predicate::Variable(Name::new_inline("param1")).into(),
+                            ),
+                        })
+                        .into(),
+                    })
+                    .into(),
+                };
+                let (fold, ty, constraint) =
+                    self.synth_function_call(compare_signature, vec![lhs, rhs], None);
+                (fold, ty.as_refined_base(), constraint)
+            }
         }
     }
 
