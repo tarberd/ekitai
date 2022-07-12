@@ -373,7 +373,6 @@ fn lower_predicate<'ctx>(
                             _ => todo!(),
                         },
                     },
-                    _ => todo!(),
                 },
             }
         }
@@ -610,9 +609,6 @@ impl<'a> Fold<'a> {
     ) -> (Fold, RefinedBase, Option<Constraint>) {
         match op {
             TermUnaryOp::Minus => {
-                // synth operator type
-                // ty: minus_signature
-                // c: true
                 let minus_signature = DependentFunction {
                     argument: (
                         Name::new_inline("param0"),
@@ -642,7 +638,36 @@ impl<'a> Fold<'a> {
                     self.synth_function_call(minus_signature, vec![term], None);
                 (fold, ty.as_refined_base(), constraint)
             }
-            TermUnaryOp::Negation => todo!(),
+            TermUnaryOp::Negation => {
+                let minus_signature = DependentFunction {
+                    argument: (
+                        Name::new_inline("param0"),
+                        RefinedBase {
+                            base: Type::Scalar(ScalarType::Boolean),
+                            binder: Name::new_inline("param0"),
+                            predicate: Predicate::Boolean(true),
+                        },
+                    ),
+                    tail_type: RefinedType::Base(RefinedBase {
+                        base: Type::Scalar(ScalarType::Boolean),
+                        binder: Name::new_inline("ret"),
+                        predicate: Predicate::Binary(
+                            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
+                            Predicate::Variable(Name::new_inline("ret")).into(),
+                            Predicate::Unary(
+                                UnaryOperator::Negation,
+                                Predicate::Variable(Name::new_inline("param0")).into(),
+                            )
+                            .into(),
+                        ),
+                    })
+                    .into(),
+                };
+
+                let (fold, ty, constraint) =
+                    self.synth_function_call(minus_signature, vec![term], None);
+                (fold, ty.as_refined_base(), constraint)
+            }
             TermUnaryOp::Reference => todo!(),
             TermUnaryOp::Dereference => todo!(),
         }
@@ -656,88 +681,50 @@ impl<'a> Fold<'a> {
     ) -> (Fold, RefinedBase, Option<Constraint>) {
         let lhs_ty = self.inference.type_of_expression[lhs].clone();
         let rhs_ty = self.inference.type_of_expression[rhs].clone();
-        match op {
-            BinaryOperator::Arithmetic(arith_op) => {
-                let sum_signature = DependentFunction {
-                    argument: (
-                        Name::new_inline("param0"),
-                        RefinedBase {
-                            base: lhs_ty.clone(),
-                            binder: Name::new_inline("param0"),
-                            predicate: Predicate::Boolean(true),
-                        },
-                    ),
-                    tail_type: RefinedType::Fn(DependentFunction {
-                        argument: (
-                            Name::new_inline("param1"),
-                            RefinedBase {
-                                base: rhs_ty,
-                                binder: Name::new_inline("param1"),
-                                predicate: Predicate::Boolean(true),
-                            },
-                        ),
-                        tail_type: RefinedType::Base(RefinedBase {
-                            base: lhs_ty,
-                            binder: Name::new_inline("ret"),
-                            predicate: Predicate::Binary(
-                                BinaryOperator::Compare(CompareOperator::Equality {
-                                    negated: false,
-                                }),
-                                Predicate::Variable(Name::new_inline("ret")).into(),
-                                Predicate::Binary(
-                                    BinaryOperator::Arithmetic(*arith_op),
-                                    Predicate::Variable(Name::new_inline("param0")).into(),
-                                    Predicate::Variable(Name::new_inline("param1")).into(),
-                                )
-                                .into(),
-                            ),
-                        })
+        let sum_signature = DependentFunction {
+            argument: (
+                Name::new_inline("param0"),
+                RefinedBase {
+                    base: lhs_ty.clone(),
+                    binder: Name::new_inline("param0"),
+                    predicate: Predicate::Boolean(true),
+                },
+            ),
+            tail_type: RefinedType::Fn(DependentFunction {
+                argument: (
+                    Name::new_inline("param1"),
+                    RefinedBase {
+                        base: rhs_ty,
+                        binder: Name::new_inline("param1"),
+                        predicate: Predicate::Boolean(true),
+                    },
+                ),
+                tail_type: RefinedType::Base(RefinedBase {
+                    base: match op {
+                        BinaryOperator::Arithmetic(_) => lhs_ty,
+                        BinaryOperator::Logic(_) | BinaryOperator::Compare(_) => {
+                            Type::Scalar(ScalarType::Boolean)
+                        }
+                    },
+                    binder: Name::new_inline("ret"),
+                    predicate: Predicate::Binary(
+                        BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
+                        Predicate::Variable(Name::new_inline("ret")).into(),
+                        Predicate::Binary(
+                            *op,
+                            Predicate::Variable(Name::new_inline("param0")).into(),
+                            Predicate::Variable(Name::new_inline("param1")).into(),
+                        )
                         .into(),
-                    })
-                    .into(),
-                };
+                    ),
+                })
+                .into(),
+            })
+            .into(),
+        };
 
-                let (fold, ty, constraint) =
-                    self.synth_function_call(sum_signature, vec![lhs, rhs], None);
-                (fold, ty.as_refined_base(), constraint)
-            }
-            op @ BinaryOperator::Logic(_) | op @ BinaryOperator::Compare(_) => {
-                let compare_signature = DependentFunction {
-                    argument: (
-                        Name::new_inline("param0"),
-                        RefinedBase {
-                            base: lhs_ty,
-                            binder: Name::new_inline("param0"),
-                            predicate: Predicate::Boolean(true),
-                        },
-                    ),
-                    tail_type: RefinedType::Fn(DependentFunction {
-                        argument: (
-                            Name::new_inline("param1"),
-                            RefinedBase {
-                                base: rhs_ty,
-                                binder: Name::new_inline("param1"),
-                                predicate: Predicate::Boolean(true),
-                            },
-                        ),
-                        tail_type: RefinedType::Base(RefinedBase {
-                            base: Type::Scalar(ScalarType::Boolean),
-                            binder: Name::new_inline("ret"),
-                            predicate: Predicate::Binary(
-                                *op,
-                                Predicate::Variable(Name::new_inline("param0")).into(),
-                                Predicate::Variable(Name::new_inline("param1")).into(),
-                            ),
-                        })
-                        .into(),
-                    })
-                    .into(),
-                };
-                let (fold, ty, constraint) =
-                    self.synth_function_call(compare_signature, vec![lhs, rhs], None);
-                (fold, ty.as_refined_base(), constraint)
-            }
-        }
+        let (fold, ty, constraint) = self.synth_function_call(sum_signature, vec![lhs, rhs], None);
+        (fold, ty.as_refined_base(), constraint)
     }
 
     fn synth_function_call(
