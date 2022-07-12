@@ -298,7 +298,7 @@ fn test_function_arith_operations_err() {
 
 #[test]
 fn test_function_compare_operations() {
-    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| y2 > x}) -> {z:bool| true} { x < y }";
+    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| y2 > x}) -> {z:bool| z == false} { x < y }";
 
     let mut db = Database::default();
     db.set_source_file_text(source.into());
@@ -310,7 +310,7 @@ fn test_function_compare_operations() {
         assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
     }
 
-    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| y2 > x}) -> {z:bool| false} { x == y }";
+    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| y2 > x}) -> {z:bool| z == false} { x == y }";
     db.set_source_file_text(source.into());
     let definitions = db.source_file_definitions_map();
     for fid in definitions
