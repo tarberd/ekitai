@@ -25,18 +25,20 @@ use crate::{
     HirDatabase,
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct RefinedBase {
     pub base: Type,
     pub binder: Name,
     pub predicate: Predicate,
 }
 
+#[derive(Debug)]
 struct DependentFunction {
-    pub argument: (Name, RefinedBase),
+    pub parameter: (Name, RefinedBase),
     pub tail_type: Box<RefinedType>,
 }
 
+#[derive(Debug)]
 enum RefinedType {
     Base(RefinedBase),
     Fn(DependentFunction),
@@ -95,6 +97,7 @@ impl FromIterator<(Path, RefinedBase)> for Context {
     }
 }
 
+#[derive(Debug)]
 enum Constraint {
     Predicate(Predicate),
     Implication {
@@ -162,7 +165,7 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
             RefinedType::Base(output_type),
             |tail_type, (param_name, param_type)| {
                 DependentFunction {
-                    argument: (param_name, param_type),
+                    parameter: (param_name, param_type),
                     tail_type: tail_type.into(),
                 }
                 .into()
@@ -190,7 +193,7 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
         }
     };
 
-    entailment(context, constraint)
+    entailment(context, dbg!(constraint))
 }
 
 fn entailment(context: Context, constraint: Constraint) -> bool {
@@ -492,7 +495,7 @@ impl<'a> Fold<'a> {
         body_term: TermId,
     ) -> (Self, Constraint) {
         let DependentFunction {
-            argument: (arg_name, arg_ty),
+            parameter: (arg_name, arg_ty),
             tail_type,
         } = constraint_type;
         //add to context
@@ -610,7 +613,7 @@ impl<'a> Fold<'a> {
         match op {
             TermUnaryOp::Minus => {
                 let minus_signature = DependentFunction {
-                    argument: (
+                    parameter: (
                         Name::new_inline("param0"),
                         RefinedBase {
                             base: Type::Scalar(ScalarType::Integer(IntegerKind::I64)),
@@ -640,7 +643,7 @@ impl<'a> Fold<'a> {
             }
             TermUnaryOp::Negation => {
                 let minus_signature = DependentFunction {
-                    argument: (
+                    parameter: (
                         Name::new_inline("param0"),
                         RefinedBase {
                             base: Type::Scalar(ScalarType::Boolean),
@@ -682,7 +685,7 @@ impl<'a> Fold<'a> {
         let lhs_ty = self.inference.type_of_expression[lhs].clone();
         let rhs_ty = self.inference.type_of_expression[rhs].clone();
         let sum_signature = DependentFunction {
-            argument: (
+            parameter: (
                 Name::new_inline("param0"),
                 RefinedBase {
                     base: lhs_ty.clone(),
@@ -691,7 +694,7 @@ impl<'a> Fold<'a> {
                 },
             ),
             tail_type: RefinedType::Fn(DependentFunction {
-                argument: (
+                parameter: (
                     Name::new_inline("param1"),
                     RefinedBase {
                         base: rhs_ty,
@@ -736,25 +739,25 @@ impl<'a> Fold<'a> {
         if argument_terms.is_empty() {
             (self, function_ty.into(), constraint)
         } else {
-            let argument = argument_terms.remove(0);
+            let argument = argument_terms.pop().unwrap();
             // synth
             let (fold, ty, constraint) =
                 self.synth_function_call(function_ty, argument_terms, constraint);
 
             let function_ty = ty.as_dependent_function();
-            let (argument_name, argument_type) = function_ty.argument;
+            let (parameter_name, argument_type) = function_ty.parameter;
 
             // check
             let (fold, c) = fold.check_type(argument, argument_type.clone());
 
-            let name = match &fold.body.expressions[argument] {
+            let argument_name = match &fold.body.expressions[argument] {
                 Term::Path(path) => path.as_name(),
                 _ => panic!(),
             };
 
             // substitue
             let return_type =
-                substitution_in_refined_type(*function_ty.tail_type, argument_name, name);
+                dbg!(substitution_in_refined_type(*function_ty.tail_type, dbg!(parameter_name), dbg!(argument_name)));
             (
                 fold,
                 return_type.into(),
@@ -802,14 +805,14 @@ fn substitution_in_function_type(
     new_name: Name,
 ) -> DependentFunction {
     let DependentFunction {
-        argument: (arg_name, arg_type),
+        parameter: (arg_name, arg_type),
         tail_type,
     } = function_ty;
     if new_name == arg_name {
         let new_arg_name = Name::new_inline(format!("{}{}", arg_name.id.as_str(), 1).as_str());
         substitution_in_function_type(
             DependentFunction {
-                argument: (
+                parameter: (
                     new_arg_name.clone(),
                     substitution_in_refined_base(arg_type, arg_name, new_arg_name),
                 ),
@@ -820,7 +823,7 @@ fn substitution_in_function_type(
         )
     } else if old_name == arg_name {
         DependentFunction {
-            argument: (
+            parameter: (
                 arg_name,
                 substitution_in_refined_base(arg_type, old_name, new_name),
             ),
@@ -828,7 +831,7 @@ fn substitution_in_function_type(
         }
     } else {
         DependentFunction {
-            argument: (
+            parameter: (
                 arg_name,
                 substitution_in_refined_base(arg_type, old_name.clone(), new_name.clone()),
             ),
