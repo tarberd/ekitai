@@ -354,7 +354,14 @@ impl BodyFold {
     }
 
     fn fold_if_expression(self, if_expr: ast::IfExpression) -> (Self, TermId) {
-        let (fold, condition) = self.fold_expression(if_expr.condition().unwrap());
+        let (mut fold, condition) = self.fold_expression(if_expr.condition().unwrap());
+
+        let (pattern_id, path) = fold.make_argument_pattern();
+        let statements = vec![Statement::Let(pattern_id, condition)];
+
+        let condition = Term::Path(path);
+        let condition = fold.expressions.alloc(condition);
+
         let (fold, then_branch) = fold.fold_expression(if_expr.then_branch().unwrap());
         let (mut fold, else_branch) = fold.fold_expression(if_expr.else_branch().unwrap());
 
@@ -364,7 +371,12 @@ impl BodyFold {
             else_branch,
         });
 
-        (fold, id)
+        let if_block = Term::Block {
+            statements,
+            trailing_expression: id,
+        };
+        let if_block_id = fold.expressions.alloc(if_block);
+        (fold, if_block_id)
     }
 
     fn fold_match_expression(self, match_expr: ast::MatchExpression) -> (Self, TermId) {

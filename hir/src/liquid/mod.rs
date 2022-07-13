@@ -18,7 +18,7 @@ use crate::{
         refinement::{Predicate, UnaryOperator},
         term::{
             ArithmeticOperator, BinaryOperator, Body, CompareOperator, Literal, LogicOperator,
-            Pattern, Statement, Term, TermId, UnaryOperator as TermUnaryOp,
+            Pattern, PatternId, Statement, Term, TermId, UnaryOperator as TermUnaryOp,
         },
         type_reference::TypeReference,
     },
@@ -72,6 +72,7 @@ impl From<DependentFunction> for RefinedType {
     }
 }
 
+#[derive(Debug, Clone)]
 struct Context {
     bindings: Vec<(Path, RefinedBase)>,
 }
@@ -178,6 +179,7 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
                 body: &body,
                 context: [].into_iter().collect(),
                 inference: db.infer_body_expression_types(function_id),
+                fresh_var_counter: 0,
             }
             .check_type(body.root_expression, base);
             (context, constraint)
@@ -187,13 +189,14 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
                 body: &body,
                 context: [].into_iter().collect(),
                 inference: db.infer_body_expression_types(function_id),
+                fresh_var_counter: 0,
             }
             .check_abstraction_type(depfn, body.root_expression);
             (context, constraint)
         }
     };
 
-    entailment(context, dbg!(constraint))
+    entailment(context, constraint)
 }
 
 fn entailment(context: Context, constraint: Constraint) -> bool {
@@ -455,6 +458,7 @@ struct Fold<'a> {
     body: &'a Body,
     context: Context,
     inference: InferenceResult,
+    fresh_var_counter: usize,
 }
 
 impl<'a> Fold<'a> {
@@ -513,9 +517,95 @@ impl<'a> Fold<'a> {
         (fold, constraint)
     }
 
-    fn check_type(self, term_id: TermId, constraint_type: RefinedBase) -> (Self, Constraint) {
+    fn check_type(mut self, term_id: TermId, constraint_type: RefinedBase) -> (Self, Constraint) {
         let term = &self.body.expressions[term_id];
         match term {
+            Term::Block {
+                statements,
+                trailing_expression,
+            } => {
+                let (fold, constraints) =
+                    statements
+                        .iter()
+                        .fold(
+                            (self, vec![]),
+                            |(fold, mut constraints), statement| match statement {
+                                Statement::Let(pattern, init_term) => {
+                                    let (mut fold, ty, c) = fold.synth_type(*init_term);
+                                    let pattern = &fold.body.patterns[*pattern];
+                                    let (path, name) = match pattern {
+                                        Pattern::Bind(name) => (
+                                            Path {
+                                                segments: vec![name.clone()],
+                                            },
+                                            name.clone(),
+                                        ),
+                                        _ => todo!(),
+                                    };
+                                    fold.context.bindings.push((path, ty.clone()));
+                                    constraints.push((name, ty, c));
+                                    (fold, constraints)
+                                }
+                                Statement::Expression(_) => todo!(),
+                            },
+                        );
+                let (fold, c) = fold.check_type(*trailing_expression, constraint_type);
+                let constraint = constraints.into_iter().rfold(
+                    Some(c),
+                    |inner_constraint, (name, ty, outer_constraint)| {
+                        let implication_constraint =
+                            implication_constraint(name, ty, inner_constraint);
+                        Some(Constraint::make_conjunction(
+                            outer_constraint,
+                            implication_constraint,
+                        ))
+                    },
+                );
+                (fold, constraint.unwrap())
+            }
+            Term::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let fresh_var = self.make_fresh_var();
+                let (fold, constraint) = self.check_type(
+                    *condition,
+                    RefinedBase {
+                        base: Type::Scalar(ScalarType::Boolean),
+                        binder: Name::new_inline("b"),
+                        predicate: Predicate::Boolean(true),
+                    },
+                );
+                if !entailment(fold.context.clone(), constraint) {
+                    panic!("if condition not a valid boolean")
+                }
+
+                let (fold, constraint) = fold.check_type(*then_branch, constraint_type.clone());
+                let c1 = implication_constraint(
+                    fresh_var.clone(),
+                    RefinedBase {
+                        base: Type::Scalar(ScalarType::Boolean),
+                        binder: Name::new_inline("branch_"),
+                        predicate: Predicate::Variable(fold.term_as_name(*condition)),
+                    },
+                    Some(constraint),
+                );
+                let (fold, constraint) = fold.check_type(*else_branch, constraint_type);
+                let c2 = implication_constraint(
+                    fresh_var,
+                    RefinedBase {
+                        base: Type::Scalar(ScalarType::Boolean),
+                        binder: Name::new_inline("branch_"),
+                        predicate: Predicate::Unary(
+                            UnaryOperator::Negation,
+                            Predicate::Variable(fold.term_as_name(*condition)).into(),
+                        ),
+                    },
+                    Some(constraint),
+                );
+                (fold, Constraint::Conjunction(c1.into(), c2.into()))
+            }
             _ => {
                 let (fold, t, c) = self.synth_type(term_id);
                 let (fold, c2) = fold.subtype(t, constraint_type);
@@ -601,7 +691,7 @@ impl<'a> Fold<'a> {
             },
             Term::Unary(op, term) => self.synth_unary_term(op, *term),
             Term::Binary(op, lhs, rhs) => self.synth_binary_term(op, *lhs, *rhs),
-            _ => todo!(),
+            term => panic!("Unhandled term {:?}", term),
         }
     }
 
@@ -750,19 +840,31 @@ impl<'a> Fold<'a> {
             // check
             let (fold, c) = fold.check_type(argument, argument_type.clone());
 
-            let argument_name = match &fold.body.expressions[argument] {
-                Term::Path(path) => path.as_name(),
-                _ => panic!(),
-            };
+            let argument_name = fold.term_as_name(argument);
 
             // substitue
             let return_type =
-                dbg!(substitution_in_refined_type(*function_ty.tail_type, dbg!(parameter_name), dbg!(argument_name)));
+                substitution_in_refined_type(*function_ty.tail_type, parameter_name, argument_name);
             (
                 fold,
                 return_type.into(),
                 Some(Constraint::make_conjunction(constraint, c)),
             )
+        }
+    }
+
+    fn make_fresh_var(&mut self) -> Name {
+        let fresh = self.fresh_var_counter;
+        self.fresh_var_counter += 1;
+        Name {
+            id: format!("__fresh{}", fresh).into(),
+        }
+    }
+
+    fn term_as_name(&self, term_id: TermId) -> Name {
+        match &self.body.expressions[term_id] {
+            Term::Path(path) => path.as_name(),
+            _ => panic!("not a path term"),
         }
     }
 }

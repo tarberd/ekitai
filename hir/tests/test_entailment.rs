@@ -381,3 +381,18 @@ fn test_function_div() {
         assert_eq!(false, hir::liquid::check_abstraction(&db, *fid));
     }
 }
+
+#[test]
+fn test_function_abs() {
+    let source = "fn abs(x: {x2:i64| true}) -> {z:i64| z >= x} { if x >= 0 { x } else { -x } }";
+
+    let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
