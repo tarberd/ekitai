@@ -218,7 +218,8 @@ fn test_function_sum_call_argument() {
 
 #[test]
 fn test_function_sum_call_argument_err() {
-    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| true}) -> {z:i64| z == x + y + 1} { x + y }";
+    let source =
+        "fn sum(x: {x2:i64| true}, y: {y2:i64| true}) -> {z:i64| z == x + y + 1} { x + y }";
 
     let mut db = Database::default();
     db.set_source_file_text(source.into());
@@ -310,7 +311,8 @@ fn test_function_compare_operations() {
         assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
     }
 
-    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| y2 > x}) -> {z:bool| z == false} { x == y }";
+    let source =
+        "fn sum(x: {x2:i64| true}, y: {y2:i64| y2 > x}) -> {z:bool| z == false} { x == y }";
     db.set_source_file_text(source.into());
     let definitions = db.source_file_definitions_map();
     for fid in definitions
@@ -330,7 +332,8 @@ fn test_function_compare_operations() {
         assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
     }
 
-    let source = "fn sum(x: {x2:i64| true}, y: {y2:i64| y2 > x}) -> {z:bool| true } { y + x > x + x }";
+    let source =
+        "fn sum(x: {x2:i64| true}, y: {y2:i64| y2 > x}) -> {z:bool| true } { y + x > x + x }";
     db.set_source_file_text(source.into());
     let definitions = db.source_file_definitions_map();
     for fid in definitions
@@ -340,7 +343,6 @@ fn test_function_compare_operations() {
         assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
     }
 }
-
 
 #[test]
 fn test_function_i32() {
@@ -387,6 +389,65 @@ fn test_function_abs() {
     let source = "fn abs(x: {x2:i64| true}) -> {z:i64| z >= x} { if x >= 0 { x } else { -x } }";
 
     let mut db = Database::default();
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
+
+#[test]
+fn test_recursive_call() {
+    let mut db = Database::default();
+
+    let source = "fn rec(x: {x2:i64| true}) -> {z:i64| true} { rec(x) }";
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+
+    let source = "fn sum(n: {x:i64| true}) -> {z:i64| z >= 0 && n <= z } {
+        if n <= 0 {
+            0
+        } else {
+            let n1 = n - 1;
+            let t1 = sum(n1);
+            n + t1
+        }
+    }";
+    db.set_source_file_text(source.into());
+    let definitions = db.source_file_definitions_map();
+    for fid in definitions
+        .root_module_item_scope()
+        .iter_function_locations()
+    {
+        assert_eq!(true, hir::liquid::check_abstraction(&db, *fid));
+    }
+}
+
+#[test]
+fn test_two_functions_recursive_call() {
+    let mut db = Database::default();
+
+    let source = "fn sum(n: {x:i64| true}) -> {z:i64| z >= 0 && n <= z } {
+        if n <= 0 {
+            let zero = 0;
+            id(zero)
+        } else {
+            let n1 = n - 1;
+            let t1 = sum(n1);
+            n + t1
+        }
+    }
+    fn id(x: {x2:i64| true}) -> {z:i64| z == x} { x }
+    ";
     db.set_source_file_text(source.into());
     let definitions = db.source_file_definitions_map();
     for fid in definitions
