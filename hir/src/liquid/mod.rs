@@ -10,7 +10,7 @@ use crate::{
         IntegerKind, ScalarType, Type,
     },
     semantic_ir::{
-        definition_map::FunctionDefinitionId,
+        definition_map::{FunctionDefinitionData, FunctionDefinitionId},
         intrinsic::BuiltinInteger,
         name::Name,
         path::Path,
@@ -32,13 +32,13 @@ struct RefinedBase {
     pub predicate: Predicate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DependentFunction {
     pub parameter: (Name, RefinedBase),
     pub tail_type: Box<RefinedType>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum RefinedType {
     Base(RefinedBase),
     Fn(DependentFunction),
@@ -74,25 +74,25 @@ impl From<DependentFunction> for RefinedType {
 
 #[derive(Debug, Clone)]
 struct Context {
-    bindings: Vec<(Path, RefinedBase)>,
+    bindings: Vec<(Path, RefinedType)>,
 }
 
 impl Context {
-    fn get(&self, path: &Path) -> Option<RefinedBase> {
+    fn get(&self, path: &Path) -> Option<RefinedType> {
         self.bindings
             .iter()
             .find(|(to_find, _)| path == to_find)
             .map(|(_, ty)| ty.clone())
     }
 
-    fn pop(mut self) -> (Self, Option<(Path, RefinedBase)>) {
+    fn pop(mut self) -> (Self, Option<(Path, RefinedType)>) {
         let opt = self.bindings.pop();
         (self, opt)
     }
 }
 
-impl FromIterator<(Path, RefinedBase)> for Context {
-    fn from_iter<T: IntoIterator<Item = (Path, RefinedBase)>>(iter: T) -> Self {
+impl FromIterator<(Path, RefinedType)> for Context {
+    fn from_iter<T: IntoIterator<Item = (Path, RefinedType)>>(iter: T) -> Self {
         let bindings = iter.into_iter().collect();
         Self { bindings }
     }
@@ -140,6 +140,52 @@ fn something(
 }
 
 pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId) -> bool {
+    let context = {
+        db.source_file_definitions_map()
+            .root_module_item_scope()
+            .iter_function_locations()
+            .map(|fid| {
+                let FunctionDefinitionData { name, .. } = db.function_definition_data(*fid);
+                (
+                    Path {
+                        segments: vec![name],
+                    },
+                    make_function_type(db, *fid),
+                )
+            })
+            .collect()
+    };
+
+    let function_type = make_function_type(db, function_id);
+    let body = db.body_of_definition(function_id);
+
+    let (context, constraint) = match function_type {
+        RefinedType::Base(base) => {
+            let (Fold { context, .. }, constraint) = Fold {
+                body: &body,
+                context,
+                inference: db.infer_body_expression_types(function_id),
+                fresh_var_counter: 0,
+            }
+            .check_type(body.root_expression, base);
+            (context, constraint)
+        }
+        RefinedType::Fn(depfn) => {
+            let (Fold { context, .. }, constraint) = Fold {
+                body: &body,
+                context,
+                inference: db.infer_body_expression_types(function_id),
+                fresh_var_counter: 0,
+            }
+            .check_abstraction_type(depfn, body.root_expression);
+            (context, constraint)
+        }
+    };
+
+    entailment(context, constraint)
+}
+
+fn make_function_type(db: &dyn HirDatabase, function_id: FunctionDefinitionId) -> RefinedType {
     let resolver = Resolver::new_for_function(db.upcast(), function_id);
     let function = db.function_definition_data(function_id);
     let output_type = something(db, &resolver, &function.return_type);
@@ -173,36 +219,14 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
             },
         );
 
-    let (context, constraint) = match function_type {
-        RefinedType::Base(base) => {
-            let (Fold { context, .. }, constraint) = Fold {
-                body: &body,
-                context: [].into_iter().collect(),
-                inference: db.infer_body_expression_types(function_id),
-                fresh_var_counter: 0,
-            }
-            .check_type(body.root_expression, base);
-            (context, constraint)
-        }
-        RefinedType::Fn(depfn) => {
-            let (Fold { context, .. }, constraint) = Fold {
-                body: &body,
-                context: [].into_iter().collect(),
-                inference: db.infer_body_expression_types(function_id),
-                fresh_var_counter: 0,
-            }
-            .check_abstraction_type(depfn, body.root_expression);
-            (context, constraint)
-        }
-    };
-
-    entailment(context, constraint)
+    function_type
 }
 
 fn entailment(context: Context, constraint: Constraint) -> bool {
     match context.pop() {
         (_, None) => solve(constraint),
-        (tail, Some((path, refinement))) => {
+        (tail, Some((path, RefinedType::Fn(_)))) => entailment(tail, constraint),
+        (tail, Some((path, RefinedType::Base(refinement)))) => {
             let RefinedBase {
                 binder,
                 predicate,
@@ -506,7 +530,9 @@ impl<'a> Fold<'a> {
         let arg_path = Path {
             segments: vec![arg_name.clone()],
         };
-        self.context.bindings.push((arg_path, arg_ty.clone()));
+        self.context
+            .bindings
+            .push((arg_path, arg_ty.clone().into()));
         //check
         let (fold, constraint) = match *tail_type {
             RefinedType::Base(base) => self.check_type(body_term, base),
@@ -554,7 +580,7 @@ impl<'a> Fold<'a> {
                     Some(c),
                     |inner_constraint, (name, ty, outer_constraint)| {
                         let implication_constraint =
-                            implication_constraint(name, ty, inner_constraint);
+                            implication_constraint(name, ty.as_refined_base(), inner_constraint);
                         Some(Constraint::make_conjunction(
                             outer_constraint,
                             implication_constraint,
@@ -608,13 +634,13 @@ impl<'a> Fold<'a> {
             }
             _ => {
                 let (fold, t, c) = self.synth_type(term_id);
-                let (fold, c2) = fold.subtype(t, constraint_type);
+                let (fold, c2) = fold.subtype(t.as_refined_base(), constraint_type);
                 (fold, Constraint::make_conjunction(c, c2))
             }
         }
     }
 
-    fn synth_type(self, term_id: TermId) -> (Self, RefinedBase, Option<Constraint>) {
+    fn synth_type(self, term_id: TermId) -> (Self, RefinedType, Option<Constraint>) {
         let term = &self.body.expressions[term_id];
         match term {
             Term::Block {
@@ -651,7 +677,7 @@ impl<'a> Fold<'a> {
                     c,
                     |inner_constraint, (name, ty, outer_constraint)| {
                         let implication_constraint =
-                            implication_constraint(name, ty, inner_constraint);
+                            implication_constraint(name, ty.as_refined_base(), inner_constraint);
                         Some(Constraint::make_conjunction(
                             outer_constraint,
                             implication_constraint,
@@ -660,37 +686,50 @@ impl<'a> Fold<'a> {
                 );
                 (fold, base, constraint)
             }
-            Term::Path(path) => {
-                let RefinedBase {
+            Term::Path(path) => match self
+                .context
+                .get(path)
+                .expect(format!("{path:?} not in context.").as_str())
+                .clone()
+            {
+                RefinedType::Base(RefinedBase {
                     base,
                     binder,
                     predicate,
-                } = self.context.get(path).unwrap().clone();
+                }) => {
+                    assert!(binder != path.as_name());
 
-                assert!(binder != path.as_name());
-
-                let path_type = RefinedBase {
-                    base,
-                    binder: binder.clone(),
-                    predicate: Predicate::Binary(
-                        BinaryOperator::Logic(LogicOperator::And),
-                        predicate.into(),
-                        Predicate::Binary(
-                            BinaryOperator::Compare(CompareOperator::Equality { negated: false }),
-                            Predicate::Variable(binder).into(),
-                            Predicate::Variable(path.as_name()).into(),
-                        )
-                        .into(),
-                    ),
-                };
-                (self, path_type, None)
-            }
+                    let path_type = RefinedBase {
+                        base,
+                        binder: binder.clone(),
+                        predicate: Predicate::Binary(
+                            BinaryOperator::Logic(LogicOperator::And),
+                            predicate.into(),
+                            Predicate::Binary(
+                                BinaryOperator::Compare(CompareOperator::Equality {
+                                    negated: false,
+                                }),
+                                Predicate::Variable(binder).into(),
+                                Predicate::Variable(path.as_name()).into(),
+                            )
+                            .into(),
+                        ),
+                    };
+                    (self, path_type.into(), None)
+                }
+                dependent_fn => (self, dependent_fn, None),
+            },
             Term::Literal(lit) => match lit {
-                Literal::Integer(value, sufix) => (self, primitive_integer(*value, *sufix), None),
-                Literal::Bool(value) => (self, primitive_bool(*value), None),
+                Literal::Integer(value, sufix) => {
+                    (self, primitive_integer(*value, *sufix).into(), None)
+                }
+                Literal::Bool(value) => (self, primitive_bool(*value).into(), None),
             },
             Term::Unary(op, term) => self.synth_unary_term(op, *term),
-            Term::Binary(op, lhs, rhs) => self.synth_binary_term(op, *lhs, *rhs),
+            Term::Binary(op, lhs, rhs) => self.synth_binary_term(op, *lhs, *rhs).into(),
+            Term::Call { callee, arguments } => {
+                self.synth_call_term(*callee, arguments.clone()).into()
+            }
             term => panic!("Unhandled term {:?}", term),
         }
     }
@@ -699,7 +738,7 @@ impl<'a> Fold<'a> {
         self,
         op: &'a TermUnaryOp,
         term: Idx<Term>,
-    ) -> (Fold, RefinedBase, Option<Constraint>) {
+    ) -> (Fold, RefinedType, Option<Constraint>) {
         match op {
             TermUnaryOp::Minus => {
                 let minus_signature = DependentFunction {
@@ -729,7 +768,7 @@ impl<'a> Fold<'a> {
 
                 let (fold, ty, constraint) =
                     self.synth_function_call(minus_signature, vec![term], None);
-                (fold, ty.as_refined_base(), constraint)
+                (fold, ty, constraint)
             }
             TermUnaryOp::Negation => {
                 let minus_signature = DependentFunction {
@@ -759,7 +798,7 @@ impl<'a> Fold<'a> {
 
                 let (fold, ty, constraint) =
                     self.synth_function_call(minus_signature, vec![term], None);
-                (fold, ty.as_refined_base(), constraint)
+                (fold, ty, constraint)
             }
             TermUnaryOp::Reference => todo!(),
             TermUnaryOp::Dereference => todo!(),
@@ -771,7 +810,7 @@ impl<'a> Fold<'a> {
         op: &'a BinaryOperator,
         lhs: Idx<Term>,
         rhs: Idx<Term>,
-    ) -> (Fold, RefinedBase, Option<Constraint>) {
+    ) -> (Fold, RefinedType, Option<Constraint>) {
         let lhs_ty = self.inference.type_of_expression[lhs].clone();
         let rhs_ty = self.inference.type_of_expression[rhs].clone();
         let sum_signature = DependentFunction {
@@ -817,7 +856,19 @@ impl<'a> Fold<'a> {
         };
 
         let (fold, ty, constraint) = self.synth_function_call(sum_signature, vec![lhs, rhs], None);
-        (fold, ty.as_refined_base(), constraint)
+        (fold, ty, constraint)
+    }
+
+    fn synth_call_term(
+        self,
+        callee: Idx<Term>,
+        arguments: Vec<Idx<Term>>,
+    ) -> (Self, RefinedType, Option<Constraint>) {
+        let (fold, function_ty, constraint) = self.synth_type(callee);
+
+        let (fold, ret_ty, constraint) =
+            fold.synth_function_call(function_ty.as_dependent_function(), arguments, constraint);
+        (fold, ret_ty, constraint)
     }
 
     fn synth_function_call(
