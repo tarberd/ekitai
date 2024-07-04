@@ -7,7 +7,7 @@ all: out.o
 	cmake --build build
 
 out.ll: option.eki
-	cargo run option.eki
+	cargo run option.eki --noliquid
 
 out.o: out.ll
 	clang -c out.ll

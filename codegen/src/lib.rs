@@ -45,6 +45,9 @@ pub trait CodeGenDatabase: HirDatabase + Upcast<dyn HirDatabase> {
     #[salsa::input]
     fn target(&self) -> CodeGenTarget;
 
+    #[salsa::input]
+    fn liquid(&self) -> bool;
+
     fn target_machine(&self) -> ByAddress<Arc<TargetMachine>>;
 
     fn build_assembly_ir(&self) -> ();
@@ -1050,10 +1053,11 @@ impl FunctionIr<'_> {
 //     }
 // }
 
-pub fn compile_text(source: String, target: CodeGenTarget) {
+pub fn compile_text(source: String, target: CodeGenTarget, liquid: bool) {
     let mut db = Database::default();
     db.set_source_file_text(source);
     db.set_target(target);
+    db.set_liquid(liquid);
     db.build_assembly_ir()
 }
 
@@ -1088,6 +1092,12 @@ pub fn build_assembly_ir(db: &dyn CodeGenDatabase) {
 
     let def_map = db.source_file_definitions_map();
     for function_id in def_map.root_module_item_scope().iter_function_locations() {
+        if db.liquid() {
+            if !hir::liquid::check_abstraction(db.upcast(), *function_id) {
+                println!("Type error");
+                return;
+            }
+        }
         function_body_builder.build_function_body(function_id)
     }
 

@@ -1,13 +1,13 @@
 
 run: all
-	./build/matrix2
+	./build/bool
 
 all: out.o
 	cmake -B build
 	cmake --build build
 
-out.ll: matrix2.eki
-	cargo run matrix2.eki --noliquid
+out.ll: bool.eki
+	cargo run bool.eki
 
 out.o: out.ll
 	clang -c out.ll

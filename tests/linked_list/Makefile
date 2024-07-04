@@ -7,10 +7,10 @@ all: out.o
 	cmake --build build
 
 out.ll: linked_list.eki
-	cargo run linked_list.eki
+	cargo run linked_list.eki --noliquid
 
 out.o: out.ll
-	clang -c out.ll
+	clang -c out.ll -std=c++20
 
 clean:
 	rm out.ll out.o

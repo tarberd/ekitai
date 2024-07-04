@@ -182,6 +182,8 @@ pub fn check_abstraction(db: &dyn HirDatabase, function_id: FunctionDefinitionId
         }
     };
 
+    println!("Context: {:?}", context);
+    println!("Constraint: {:?}", constraint);
     entailment(context, constraint)
 }
 
@@ -225,7 +227,7 @@ fn make_function_type(db: &dyn HirDatabase, function_id: FunctionDefinitionId) -
 fn entailment(context: Context, constraint: Constraint) -> bool {
     match context.pop() {
         (_, None) => solve(constraint),
-        (tail, Some((path, RefinedType::Fn(_)))) => entailment(tail, constraint),
+        (tail, Some((_path, RefinedType::Fn(_)))) => entailment(tail, constraint),
         (tail, Some((path, RefinedType::Base(refinement)))) => {
             let RefinedBase {
                 binder,

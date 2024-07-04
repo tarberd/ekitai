@@ -1,3 +1,7 @@
-fn test(x: {x:i64 | x != 0}) -> {x: i64 | x != 0} {
+fn abs_liquid(x: {y: i64 | true}) -> {z: i64 | z >= 0} {
+  if x > 0 {
     x
+  } else {
+    -x 
+  }
 }

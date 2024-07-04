@@ -7,11 +7,11 @@
 using std::string;
 
 extern "C" {
-  std::int64_t abs_liquid(std::int64_t);
+  std::int64_t id(std::int64_t);
 }
 
 int main() {
-  fmt::print("abs(15): {}\n", abs_liquid(15));
-  fmt::print("abs(-15): {}\n", abs_liquid(-15));
+  fmt::print("id(15): {}\n", id(15));
+  fmt::print("id(-15): {}\n", id(-15));
   return 0;
 }
